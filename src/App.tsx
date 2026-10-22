@@ -6,6 +6,7 @@ import {
   isOutsideWallEdge,
   isWallEdge,
   newPuzzle,
+  normalizeRuleCount,
   OBJECT_ART,
   parsePuzzle,
   placeObject,
@@ -71,11 +72,18 @@ export default function App() {
   const [selectedKind, setSelectedKind] = useState(initial.puzzle.objectKinds[0]?.id ?? '');
   const [selectedSuspect, setSelectedSuspect] = useState(initial.puzzle.suspects[0]?.id ?? '');
   const [notice, setNotice] = useState('');
+  const [saveFailed, setSaveFailed] = useState(false);
   const drawingPointer = useRef<number | null>(null);
   const paintedCells = useRef(new Set<string>());
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ puzzle, placements, notes } satisfies SavedCase));
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ puzzle, placements, notes } satisfies SavedCase));
+      setSaveFailed(false);
+    } catch (error) {
+      console.warn('Could not save this case on this device.', error);
+      setSaveFailed(true);
+    }
   }, [puzzle, placements, notes]);
 
   const playable = useMemo(() => new Set(puzzle.playable), [puzzle.playable]);
@@ -309,7 +317,7 @@ export default function App() {
   function setRule(key: keyof Puzzle['rules'], raw: string) {
     const rules = { ...puzzle.rules };
     if (raw === '') delete rules[key];
-    else rules[key] = Math.max(0, Number(raw) || 0);
+    else rules[key] = normalizeRuleCount(Number(raw));
     updatePuzzle({ ...puzzle, rules });
   }
 
@@ -360,7 +368,7 @@ export default function App() {
     <div className="app-shell">
       <header className="topbar">
         <div className="brand"><span className="brand-mark">M</span><span>Murdoku <strong>Companion</strong></span></div>
-        <div className="save-indicator"><span aria-hidden="true" /> Saved on this device</div>
+        <div className="save-indicator"><span aria-hidden="true" /> {saveFailed ? 'Could not save on this device — export your case' : 'Saved on this device'}</div>
       </header>
 
       <main className="main-layout">
@@ -548,7 +556,7 @@ export default function App() {
                 <div className="card-title"><h2>Special rules</h2></div>
                 <p className="hint">Only fill these when the case explicitly states a count.</p>
                 <div className="three-fields">
-                  {([['emptyRows', 'Empty rows'], ['emptyCols', 'Empty columns'], ['emptyRooms', 'Empty rooms']] as const).map(([key, label]) => <label key={key}>{label}<input type="number" min="0" value={puzzle.rules[key] ?? ''} onChange={(event) => setRule(key, event.target.value)} /></label>)}
+                  {([['emptyRows', 'Empty rows'], ['emptyCols', 'Empty columns'], ['emptyRooms', 'Empty rooms']] as const).map(([key, label]) => <label key={key}>{label}<input type="number" min="0" step="1" value={puzzle.rules[key] ?? ''} onChange={(event) => setRule(key, event.target.value)} /></label>)}
                 </div>
               </section>}
 

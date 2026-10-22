@@ -64,6 +64,19 @@ export type Placement = { suspectId: string; cell: Cell };
 export type WallSide = z.infer<typeof wallSideSchema>;
 export type ObjectArt = z.infer<typeof objectArtSchema>;
 
+export function normalizeRuleCount(value: number): number {
+  return Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;
+}
+
+function normalizeRules(rules: unknown): unknown {
+  if (!rules || typeof rules !== 'object' || Array.isArray(rules)) return rules;
+  const normalized = { ...rules } as Record<string, unknown>;
+  for (const key of ['emptyRows', 'emptyCols', 'emptyRooms']) {
+    if (typeof normalized[key] === 'number') normalized[key] = normalizeRuleCount(normalized[key]);
+  }
+  return normalized;
+}
+
 const puzzleV1Schema = z.object({
   version: z.literal(1),
   id: z.string(), title: z.string(), rows: z.number(), cols: z.number(),
@@ -87,7 +100,7 @@ export function parsePuzzle(input: unknown): Puzzle {
       const namedArt = DEFAULT_OBJECT_KINDS.find((item) => item.name.toLowerCase() === String(record.name).trim().toLowerCase() && !item.onWall)?.art;
       const migratedArt = savedAppearanceVersion < 4 && (record.art === 'custom' || record.art === undefined) ? namedArt : undefined;
       return { ...record, outsideOnly: record.id === 'window' ? true : record.outsideOnly ?? preset?.outsideOnly ?? false, art: onWall ? 'bar' : migratedArt ?? record.art ?? (OBJECT_ART.includes(record.shape as ObjectArt) && record.shape !== 'bar' ? record.shape : preset?.art ?? 'custom') };
-    }), appearanceVersion: 4 }
+    }), rules: normalizeRules('rules' in input ? input.rules : undefined), appearanceVersion: 4 }
     : input;
   const v2 = puzzleSchema.safeParse(candidate);
   if (v2.success) return v2.data;
@@ -104,6 +117,7 @@ export function parsePuzzle(input: unknown): Puzzle {
     ...old,
     version: 2,
     appearanceVersion: 4,
+    rules: normalizeRules(old.rules),
     objectKinds: [...DEFAULT_OBJECT_KINDS, ...customKinds],
     objects: old.objects.map((object) => ({ id: object.id, kindId: `legacy-${object.id}`, cell: object.cell })),
   });

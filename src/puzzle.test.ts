@@ -1,7 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { assignCellToRoom, cell, isWallEdge, newPuzzle, parsePuzzle, placeObject, resizePuzzle, validatePlacements, validatePuzzle } from './puzzle';
+import { assignCellToRoom, cell, isWallEdge, newPuzzle, normalizeRuleCount, parsePuzzle, placeObject, resizePuzzle, validatePlacements, validatePuzzle } from './puzzle';
 
 describe('puzzle rules', () => {
+  it('keeps an existing case when an older save has a fractional rule count', () => {
+    const puzzle = newPuzzle();
+    puzzle.title = 'Saved case';
+    const restored = parsePuzzle({ ...puzzle, rules: { emptyRows: 1.5, emptyCols: -2 } });
+    expect(restored.id).toBe(puzzle.id);
+    expect(restored.title).toBe('Saved case');
+    expect(restored.rules).toEqual({ emptyRows: 1, emptyCols: 0 });
+    expect(normalizeRuleCount(2.9)).toBe(2);
+    expect(normalizeRuleCount(Infinity)).toBe(0);
+  });
+
   it('keeps deliberately excluded cells excluded when a dimension changes', () => {
     const puzzle = newPuzzle();
     const excluded = cell(0, 0);
