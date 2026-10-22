@@ -18,6 +18,7 @@ The dev server uses port 5180, matching the local Dev Dashboard registration. Ru
 - Work through named setup tabs to enter people, clues, and explicit empty row, column, or room counts.
 - Play against the illustrated reference map using a separate compact deduction grid. Mark empty cells with X, blocked cells with a diagonal line, confirmed people with capital letters, and multiple candidates with lowercase letters. Blocking furniture is marked automatically.
 - See basic conflicts for confirmed placements.
+- Save a checkpoint, create multiple named hypotheses from it, and switch between their separate deduction states. Each branch has undo/redo; a hypothesis can be applied to Main or discarded. Reset notes is undoable.
 - Autosave the case and deduction marks in this browser; export and import the versioned puzzle definition as JSON.
 
-Photo scanning, AI parsing, automatic clue interpretation, branching hypotheses, and a multi-case library are later steps. Older puzzle JSON and browser saves are upgraded when loaded.
+Photo scanning, AI parsing, automatic clue interpretation, and a multi-case library are later steps. Older puzzle JSON and browser saves are upgraded when loaded.
