@@ -106,6 +106,7 @@ curl -sS -X POST http://localhost:4000/api/agent-activity \
     "phase": "finish",
     "agent": "codex",
     "chatId": "<same-actual-chat-id>",
+    "chatTitle": "<same-actual-chat-title>",
     "directory": "/absolute/path/to/this/project",
     "summary": "CR comments addressed; waiting on CI"
   }'
@@ -137,4 +138,3 @@ curl -sS -X POST http://localhost:4000/api/agent-activity \
 The dashboard hot-reloads `projects.json`.
 
 Chat status: completed turns are **idle**. Reserve **waiting** for a pending question, input, or approval request. Never use finish alone to imply user input is needed.
-
