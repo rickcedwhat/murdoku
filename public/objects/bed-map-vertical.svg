@@ -1,13 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 196" aria-label="Bed">
-  <g stroke-linejoin="round">
-    <path d="M13 12h81v180H13z" fill="#55535a" opacity=".45"/>
-    <rect x="8" y="5" width="83" height="183" rx="2" fill="#f3f1f0" stroke="#67636a" stroke-width="3"/>
-    <rect x="13" y="10" width="73" height="44" rx="3" fill="#fbfaf8" stroke="#aaa5aa" stroke-width="1.5"/>
-    <rect x="17" y="15" width="27" height="32" rx="4" fill="#fffefa" stroke="#918d93" stroke-width="2"/>
-    <rect x="55" y="15" width="27" height="32" rx="4" fill="#fffefa" stroke="#918d93" stroke-width="2"/>
-    <path d="M13 62h73v120H13z" fill="#bda5c1" stroke="#7a6d7b" stroke-width="1.5"/>
-    <path d="M13 76h73" stroke="#d6c2d7" stroke-width="2"/>
-    <path d="M8 183h83" stroke="#5f5c63" stroke-width="5"/>
-    <path d="M14 188v5m71-5v5" stroke="#5a565d" stroke-width="5" stroke-linecap="round"/>
-  </g>
+ <g transform="translate(100 0) rotate(90)" stroke-linejoin="round">
+  <path d="M17 22h175v64H17z" fill="#555259" opacity=".42"/>
+  <path d="M9 12h175l7 7v59H9z" fill="#f6f4f2" stroke="#64636a" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M9 12h62v66H9z" fill="#f8f7f4" stroke="#85838a" stroke-width="2"/>
+  <rect x="15" y="18" width="34" height="54" rx="5" fill="#fffefb" stroke="#a7a3a9" stroke-width="2"/>
+  <path d="M71 13h113l7 6v59H71z" fill="#c2abc6" stroke="#756a79" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M76 18h107" stroke="#d8c3d9" stroke-width="2"/>
+  <path d="M9 78h182l-6 10H14z" fill="#6c686e" stroke="#49484e" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M17 87v8m164-8v8" stroke="#504d52" stroke-width="6" stroke-linecap="round"/>
+  <path d="M184 13 192 19v58l-1 1" fill="none" stroke="#757079" stroke-width="2"/>
+ </g>
 </svg>

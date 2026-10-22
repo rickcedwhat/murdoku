@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" aria-label="TV">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="14 13 76 80" aria-label="TV">
   <path d="M19 79h67v10H17z" fill="#555259" opacity=".7"/>
   <g stroke="#3e3c43" stroke-width="3" stroke-linejoin="round">
     <rect x="20" y="59" width="61" height="27" rx="3" fill="#777179"/>

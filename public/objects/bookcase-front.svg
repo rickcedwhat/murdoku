@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" aria-label="Bookcase">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="9 5 80 90" aria-label="Bookcase">
   <path d="M17 19h70v74H17z" fill="#56525a" opacity=".55"/>
   <rect x="12" y="8" width="72" height="76" rx="2" fill="#564d58" stroke="#3e3a42" stroke-width="4"/>
   <rect x="18" y="15" width="60" height="19" fill="#39363d"/>
