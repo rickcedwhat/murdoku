@@ -54,9 +54,13 @@
 .tile-table.joined-w::before,.tile-table.joined-e::after,.tile-table.joined-s::before,.tile-table.joined-s::after{display:none}
 
 /* A bed is one two-cell object with a continuous illustration. */
-.cell.tile-board-cell{z-index:2;border:0}
-.cell.bed-anchor{z-index:3}
+.cell.tile-board-cell{z-index:auto;border:1px solid #93a4a594}
+.cell.bed-anchor{z-index:auto}
 .cell.bed-anchor>.cell-object{inset:-1px;z-index:6}
+.room-wall{z-index:10}
+.cell-room{z-index:11}
+.wall-object{z-index:12}
+.edge-target{z-index:13}
 .object-bed-full{display:block;position:absolute;left:0;top:0;background-repeat:no-repeat;background-size:100% 100%;filter:drop-shadow(0 2px 1px #29313650);pointer-events:none}
 .object-bed-full.bed-horizontal{width:200%;height:100%;background-image:url('/objects/bed-map-horizontal.svg?v=3')}
 .object-bed-full.bed-vertical{width:100%;height:200%;background-image:url('/objects/bed-map-vertical.svg?v=3')}
