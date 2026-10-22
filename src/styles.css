@@ -33,7 +33,8 @@
 /* Book-style room boundaries and wall labels. */
 .board{border:4px solid #242321;overflow:visible}
 .board-scroll{padding-top:16px}
-.cell-room{z-index:8;top:-13px;left:50%;max-width:none;width:max-content;overflow:visible;text-overflow:clip;transform:translateX(-50%);border:2px solid #242321;border-radius:999px;background:#fffaf0;box-shadow:0 2px 2px #28201728;padding:2px 8px;color:#263238;font-family:Georgia,serif;font-size:11px;font-weight:900;letter-spacing:.01em;line-height:1.1;white-space:nowrap}
+.cell-room{z-index:8;top:5px;left:50%;max-width:none;width:max-content;overflow:visible;text-overflow:clip;transform:translateX(-50%);border:2px solid #242321;border-radius:999px;background:#fffaf0;box-shadow:0 2px 2px #28201728;padding:2px 8px;color:#263238;font-family:Georgia,serif;font-size:11px;font-weight:900;letter-spacing:.01em;line-height:1.1;white-space:nowrap;pointer-events:none}
+.cell-room.label-bottom{top:auto;bottom:5px}
 
 /* Tables have a small floor margin; joined tiles share one top and two front legs. */
 .cell-object.tile-cell-object{inset:0}

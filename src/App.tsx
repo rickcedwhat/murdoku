@@ -54,9 +54,24 @@ export default function App() {
   const [activeNoteCell, setActiveNoteCell] = useState<Cell | null>(null);
   const [notice, setNotice] = useState('');
   const [saveFailed, setSaveFailed] = useState(false);
+  const [cellWidth, setCellWidth] = useState(58);
+  const boardRef = useRef<HTMLDivElement>(null);
   const drawingPointer = useRef<number | null>(null);
   const paintedCells = useRef(new Set<string>());
   const libraryReady = useRef(false);
+
+  useEffect(() => {
+    const board = boardRef.current;
+    if (!board) return;
+    const measure = () => {
+      const width = board.querySelector('.cell')?.getBoundingClientRect().width;
+      if (width) setCellWidth((current) => Math.abs(current - width) > 0.5 ? width : current);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(board);
+    return () => observer.disconnect();
+  }, [activeCaseId, puzzle.rows, puzzle.cols]);
 
   useEffect(() => {
     setBranchWorkspace((current) => {
@@ -87,38 +102,46 @@ export default function App() {
     puzzle.rooms.forEach((room, index) => room.cells.forEach((key) => byCell.set(key, index)));
     return byCell;
   }, [puzzle.rooms]);
-  const roomLabelCells = useMemo(() => {
-    const anchors = new Set<Cell>();
+  const roomLabels = useMemo(() => {
+    const labels = new Map<Cell, { edge: 'top' | 'bottom'; left: string; fontSize: number }>();
+    const occupied = new Set(puzzle.objects.filter((object) => !object.side).flatMap((object) => objectCells(puzzle, object)));
+    const context = document.createElement('canvas').getContext('2d');
     for (const room of puzzle.rooms) {
-      const topEdges = room.cells.filter((key) => {
+      const roomCells = new Set(room.cells);
+      const roomCenter = room.cells.reduce((sum, key) => sum + coordinates(key)[1] + 0.5, 0) / Math.max(room.cells.length, 1);
+      const fontSize = room.name.length > 11 ? 10 : 11;
+      if (context) context.font = `900 ${fontSize}px Georgia`;
+      const labelWidth = ((context?.measureText(room.name.toUpperCase()).width ?? room.name.length * fontSize * 0.65) + 22) / cellWidth;
+      const candidates: { key: Cell; edge: 'top' | 'bottom'; left: string; blocked: number; spill: number; score: number }[] = [];
+      for (const key of room.cells) {
         const [row, col] = coordinates(key);
-        return !room.cells.includes(cell(row - 1, col));
-      });
-      const runs: Cell[][] = [];
-      for (const key of topEdges.sort((a, b) => {
-        const [ar, ac] = coordinates(a);
-        const [br, bc] = coordinates(b);
-        return ar - br || ac - bc;
-      })) {
-        const previous = runs.at(-1)?.at(-1);
-        const [row, col] = coordinates(key);
-        if (previous && coordinates(previous)[0] === row && coordinates(previous)[1] === col - 1) runs.at(-1)!.push(key as Cell);
-        else runs.push([key as Cell]);
+        for (const edge of ['top', 'bottom'] as const) {
+          const boundary = !roomCells.has(cell(row + (edge === 'top' ? -1 : 1), col));
+          let runStart = col;
+          let runEnd = col;
+          while (roomCells.has(cell(row, runStart - 1))) runStart--;
+          while (roomCells.has(cell(row, runEnd + 1))) runEnd++;
+          for (let step = 1; step <= 10; step++) {
+            const x = col + step / 10;
+            const left = x - labelWidth / 2;
+            const right = x + labelWidth / 2;
+            const spill = Math.max(0, runStart - left) + Math.max(0, right - runEnd - 1);
+            const covered = Array.from({ length: Math.max(0, Math.ceil(right) - Math.floor(left)) }, (_, index) => cell(row, Math.floor(left) + index));
+            const blocked = covered.reduce((total, coveredCell) => {
+              if (!occupied.has(coveredCell) && !puzzle.objects.some((object) => object.cell === coveredCell && object.side === (edge === 'top' ? 'N' : 'S'))) return total;
+              const coveredCol = coordinates(coveredCell)[1];
+              return total + Math.max(0, Math.min(right, coveredCol + 1) - Math.max(left, coveredCol));
+            }, 0);
+            const score = Math.abs(x - roomCenter) * 10 + (boundary ? 0 : 3) + (edge === 'bottom' ? 0.5 : 0);
+            candidates.push({ key: key as Cell, edge, left: `${(x - col) * 100}%`, blocked, spill, score });
+          }
+        }
       }
-      const run = runs.sort((a, b) => b.length - a.length || coordinates(a[0])[0] - coordinates(b[0])[0])[0];
-      if (!run) continue;
-      const midpoint = (run.length - 1) / 2;
-      const best = [...run].sort((a, b) => {
-        const aDistance = Math.abs(run.indexOf(a) - midpoint);
-        const bDistance = Math.abs(run.indexOf(b) - midpoint);
-        const aCovered = puzzle.objects.some((object) => objectCells(puzzle, object).includes(a)) ? 1 : 0;
-        const bCovered = puzzle.objects.some((object) => objectCells(puzzle, object).includes(b)) ? 1 : 0;
-        return aDistance - bDistance || aCovered - bCovered;
-      })[0];
-      anchors.add(best);
+      const best = candidates.sort((a, b) => (a.spill > 0 ? 1 : 0) - (b.spill > 0 ? 1 : 0) || a.blocked - b.blocked || a.score - b.score || a.spill - b.spill)[0];
+      if (best) labels.set(best.key, { edge: best.edge, left: best.left, fontSize });
     }
-    return anchors;
-  }, [puzzle]);
+    return labels;
+  }, [puzzle, cellWidth]);
   const floorObjectsByCell = useMemo(() => new Map(puzzle.objects.filter((object) => !object.side).flatMap((object) => objectCells(puzzle, object).map((key) => [key, object] as const))), [puzzle]);
   const wallObjectsByCell = useMemo(() => {
     const byCell = new Map<string, Puzzle['objects']>();
@@ -447,6 +470,7 @@ export default function App() {
             </div>}
             <div className="board-scroll">
               <div
+                ref={boardRef}
                 className={`board ${mode === 'edit' && (tool === 'room' || tool === 'object') ? 'painting' : ''}`}
                 style={{ gridTemplateColumns: `repeat(${puzzle.cols}, minmax(46px, 1fr))` }}
                 onPointerDown={beginPaintStroke}
@@ -498,7 +522,7 @@ export default function App() {
                     onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); handleCell(key); } }}
                   >
                     {isPlayable && <>
-                      {room && roomLabelCells.has(key) && <span className="cell-room">{room.name}</span>}
+                      {room && roomLabels.has(key) && <span className={`cell-room label-${roomLabels.get(key)?.edge}`} style={{ left: roomLabels.get(key)?.left, fontSize: roomLabels.get(key)?.fontSize }}>{room.name}</span>}
                       {floorKind && <span className={`cell-object ${floorKind.art === 'table' || floorKind.art === 'carpet' || floorKind.art === 'bed' ? 'tile-cell-object' : ''}`} title={floorKind.name}><ObjectMark kind={floorKind} connections={connections} bedPart={bedPart} bedAxis={bedAxis} bedReverse={floorObject?.bedDirection === 'W' || floorObject?.bedDirection === 'N'} /></span>}
                       {wallObjects.map((object) => {
                         const wallKind = kindById.get(object.kindId);
