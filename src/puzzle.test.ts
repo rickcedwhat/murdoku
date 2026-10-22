@@ -123,4 +123,11 @@ describe('puzzle rules', () => {
     const savedTable = { ...puzzle, appearanceVersion: 3, objectKinds: [{ id: 'old-table', name: 'Table', canOccupy: false, onWall: false, art: 'custom' }] };
     expect(parsePuzzle(savedTable).objectKinds[0].art).toBe('table');
   });
+
+  it('keeps optional person portraits through a JSON import', () => {
+    const puzzle = newPuzzle();
+    const withPortrait = { ...puzzle, suspects: [{ ...puzzle.suspects[0], portrait: '/people/example.jpg' }, ...puzzle.suspects.slice(1)] };
+    expect(parsePuzzle(JSON.parse(JSON.stringify(withPortrait))).suspects[0].portrait).toBe('/people/example.jpg');
+    expect(parsePuzzle(puzzle).suspects[0].portrait).toBeUndefined();
+  });
 });

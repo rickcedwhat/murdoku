@@ -45,7 +45,7 @@ export default function App() {
   const [consideredSuspectIds, setConsideredSuspectIds] = useState<string[]>(initial[0]?.consideredSuspectIds ?? []);
   const [mode, setMode] = useState<Mode>('edit');
   const [editorTab, setEditorTab] = useState<EditorTab>('setup');
-  const [playTab, setPlayTab] = useState<'people' | 'clues' | 'checks'>('clues');
+  const [playTab, setPlayTab] = useState<'clues' | 'checks'>('clues');
   const [noteTool, setNoteTool] = useState<NoteTool>('candidate');
   const [tool, setTool] = useState<Tool>('room');
   const [selectedRoom, setSelectedRoom] = useState(initial[0]?.puzzle.rooms[0]?.id ?? '');
@@ -203,6 +203,27 @@ export default function App() {
     setPuzzle(next);
     setConsideredSuspectIds((current) => current.filter((id) => next.suspects.some((person) => person.id === id)));
     setNotice('');
+  }
+
+  async function uploadPortrait(suspectId: string, file?: File) {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { setNotice('Choose an image for the portrait.'); return; }
+    try {
+      const bitmap = await createImageBitmap(file);
+      const canvas = document.createElement('canvas');
+      canvas.width = 320;
+      canvas.height = 320;
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Canvas unavailable');
+      const size = Math.min(bitmap.width, bitmap.height);
+      context.drawImage(bitmap, (bitmap.width - size) / 2, (bitmap.height - size) / 2, size, size, 0, 0, 320, 320);
+      bitmap.close();
+      const portrait = canvas.toDataURL('image/jpeg', 0.82);
+      setPuzzle((current) => ({ ...current, suspects: current.suspects.map((suspect) => suspect.id === suspectId ? { ...suspect, portrait } : suspect) }));
+      setNotice('Portrait added.');
+    } catch {
+      setNotice('Could not read that portrait image.');
+    }
   }
 
   function typePerson(key: Cell, typed: string) {
@@ -510,7 +531,7 @@ export default function App() {
                   return <div
                     key={key}
                     data-cell={key}
-                    className={`cell ${isPlayable ? '' : 'outside'} ${selected ? 'room-selected' : ''} ${floorKind?.art === 'table' || floorKind?.art === 'carpet' ? 'tile-board-cell' : ''}`}
+                    className={`cell ${isPlayable ? '' : 'outside'} ${selected ? 'room-selected' : ''} ${floorKind?.art === 'table' || floorKind?.art === 'carpet' || floorKind?.art === 'bed' ? 'tile-board-cell' : ''} ${bedPart === 'first' ? 'bed-anchor' : ''}`}
                     role={mode === 'edit' ? 'button' : undefined}
                     tabIndex={mode === 'edit' ? 0 : undefined}
                     style={tileStyle}
@@ -592,7 +613,7 @@ export default function App() {
 
           <aside className="sidebar">
             {mode === 'edit' ? <>
-              <nav className="sidebar-tabs" aria-label="Case builder steps">{([['setup', 'Setup'], ['rooms', 'Rooms'], ['furniture', 'Furniture'], ['people', 'People & clues'], ['rules', 'Rules']] as const).map(([value, label]) => <button key={value} type="button" className={editorTab === value ? 'active' : ''} aria-current={editorTab === value ? 'step' : undefined} onClick={() => { setEditorTab(value); if (value === 'rooms') setTool('room'); if (value === 'furniture') setTool('object'); }}>{label}</button>)}</nav>
+              <nav className="sidebar-tabs" aria-label="Case builder steps">{([['setup', 'Setup'], ['rooms', 'Rooms'], ['furniture', 'Furniture'], ['people', 'Clues'], ['rules', 'Rules']] as const).map(([value, label]) => <button key={value} type="button" className={editorTab === value ? 'active' : ''} aria-current={editorTab === value ? 'step' : undefined} onClick={() => { setEditorTab(value); if (value === 'rooms') setTool('room'); if (value === 'furniture') setTool('object'); }}>{label}</button>)}</nav>
               {editorTab === 'setup' && <section className="card">
                 <div className="card-title"><h2>Case setup</h2></div>
                 <label>Case title<input value={puzzle.title} onChange={(event) => updatePuzzle({ ...puzzle, title: event.target.value })} /></label>
@@ -640,9 +661,10 @@ export default function App() {
               </section>}
 
               {editorTab === 'people' && <section className="card">
-                <div className="card-title"><h2>People & clues</h2></div>
+                <div className="card-title"><h2>Clues</h2></div>
                 {puzzle.suspects.map((suspect, index) => <div className="person-editor" key={suspect.id}>
-                  <div className="person-header"><span className="person-number">{index + 1}</span><input aria-label={`Person ${index + 1} name`} value={suspect.name} onChange={(event) => updatePuzzle({ ...puzzle, suspects: puzzle.suspects.map((item) => item.id === suspect.id ? { ...item, name: event.target.value } : item) })} /><button type="button" className="icon-button" aria-label={`Remove ${suspect.name}`} onClick={() => removeSuspect(suspect.id)}>×</button></div>
+                  <div className="person-header"><span className="person-number">{index + 1}</span>{suspect.portrait && <img className="person-editor-portrait" src={suspect.portrait} alt={`${suspect.name} portrait`} />}<input aria-label={`Person ${index + 1} name`} value={suspect.name} onChange={(event) => updatePuzzle({ ...puzzle, suspects: puzzle.suspects.map((item) => item.id === suspect.id ? { ...item, name: event.target.value } : item) })} /><button type="button" className="icon-button" aria-label={`Remove ${suspect.name}`} onClick={() => removeSuspect(suspect.id)}>×</button></div>
+                  <label className="portrait-upload">{suspect.portrait ? 'Change portrait' : 'Add portrait'}<input type="file" accept="image/*" aria-label={`${suspect.name} portrait image`} onChange={(event) => { void uploadPortrait(suspect.id, event.target.files?.[0]); event.target.value = ''; }} /></label>
                   <textarea aria-label={`${suspect.name} clue`} placeholder="Their clue, exactly as printed" value={suspect.clue} rows={2} onChange={(event) => updatePuzzle({ ...puzzle, suspects: puzzle.suspects.map((item) => item.id === suspect.id ? { ...item, clue: event.target.value } : item) })} />
                   <label className="checkbox-label"><input type="checkbox" checked={suspect.isVictim} onChange={(event) => updatePuzzle({ ...puzzle, suspects: puzzle.suspects.map((item) => item.id === suspect.id ? { ...item, isVictim: event.target.checked } : item) })} /> Victim</label>
                 </div>)}
@@ -664,12 +686,11 @@ export default function App() {
                 <div className="secondary-actions"><button type="button" onClick={downloadPuzzle}>Export JSON</button><label className="file-button">Import JSON<input type="file" accept="application/json,.json" onChange={(event) => { void importPuzzle(event.target.files?.[0]); event.target.value = ''; }} /></label><button type="button" onClick={newCase}>New case</button></div>
               </section>
             </> : <>
-              <nav className="sidebar-tabs play-tabs" aria-label="Play case panels">{([['clues', 'Clues'], ['people', 'People'], ['checks', 'Checks']] as const).map(([value, label]) => <button key={value} type="button" className={playTab === value ? 'active' : ''} onClick={() => setPlayTab(value)}>{label}</button>)}</nav>
-              {playTab === 'people' && <section className="card"><div className="card-title"><h2>People</h2></div><p className="hint">Type these letters into an active deduction cell. Check a person once you have considered every possible spot.</p><div className="suspect-list">{puzzle.suspects.map((suspect) => {
+              <nav className="sidebar-tabs play-tabs" aria-label="Play case panels">{([['clues', 'Clues'], ['checks', 'Checks']] as const).map(([value, label]) => <button key={value} type="button" className={playTab === value ? 'active' : ''} onClick={() => setPlayTab(value)}>{label}</button>)}</nav>
+              {playTab === 'clues' && <section className="card"><div className="card-title"><h2>Clues</h2></div>{puzzle.caseClues.filter(Boolean).map((clue, index) => <p className="clue" key={index}>{clue}</p>)}<p className="hint">Check a person once you have considered every possible spot.</p><div className="person-clues">{puzzle.suspects.map((suspect) => {
                 const placed = placements.find((item) => item.suspectId === suspect.id);
-                return <div className="suspect-item" key={suspect.id}><div className="suspect-summary"><span className="suspect-avatar">{suspectLetter(suspect.id)}</span><span><strong>{suspect.name}</strong><small>{placed ? `Row ${coordinates(placed.cell)[0] + 1}, column ${coordinates(placed.cell)[1] + 1}` : 'Not placed'}</small></span></div><label className="checkbox-label considered-check"><input type="checkbox" checked={consideredSuspectIds.includes(suspect.id)} onChange={() => toggleConsidered(suspect.id)} aria-label={`${suspect.name} fully considered`} />✓</label>{placed && <button type="button" className="icon-button" aria-label={`Remove ${suspect.name} from board`} onClick={() => setBranchWorkspace((current) => changeDeduction(current, (state) => ({ ...state, placements: state.placements.filter((item) => item.suspectId !== suspect.id) })))}>×</button>}</div>;
-              })}</div></section>}
-              {playTab === 'clues' && <section className="card"><div className="card-title"><h2>Clues</h2></div>{puzzle.caseClues.filter(Boolean).map((clue, index) => <p className="clue" key={index}>{clue}</p>)}{puzzle.suspects.filter((suspect) => suspect.clue.trim()).map((suspect) => <p className="clue" key={suspect.id}><strong>{suspect.name}:</strong> {suspect.clue}</p>)}{!puzzle.caseClues.some(Boolean) && !puzzle.suspects.some((suspect) => suspect.clue.trim()) && <p className="empty-note">No clues entered yet.</p>}</section>}
+                return <div className="person-clue" key={suspect.id}><div className="person-clue-heading">{suspect.portrait ? <img className="person-portrait" src={suspect.portrait} alt={`${suspect.name} portrait`} /> : <span className="suspect-avatar">{suspectLetter(suspect.id)}</span>}<div className="person-clue-copy"><strong>{suspectLetter(suspect.id)} · {suspect.name}{suspect.isVictim ? ' · Victim' : ''}</strong><p>{suspect.clue.trim() || 'No clue entered.'}</p>{placed && <small>Placed at row {coordinates(placed.cell)[0] + 1}, column {coordinates(placed.cell)[1] + 1}</small>}</div><label className="checkbox-label considered-check"><input type="checkbox" checked={consideredSuspectIds.includes(suspect.id)} onChange={() => toggleConsidered(suspect.id)} aria-label={`${suspect.name} fully considered`} />✓</label></div>{placed && <button type="button" className="remove-placement" onClick={() => setBranchWorkspace((current) => changeDeduction(current, (state) => ({ ...state, placements: state.placements.filter((item) => item.suspectId !== suspect.id) })))}>Remove from board</button>}</div>;
+              })}</div>{!puzzle.caseClues.some(Boolean) && puzzle.suspects.length === 0 && <p className="empty-note">No clues entered yet.</p>}</section>}
               {playTab === 'checks' && playProblems.length > 0 && <section className="card issue-card" role="status"><h2>Check these placements</h2><ul>{playProblems.map((problem) => <li key={problem}>{problem}</li>)}</ul></section>}
               {playTab === 'checks' && playProblems.length === 0 && <section className="card good-card"><strong>No placement conflicts</strong><p>Clue text is for manual deduction in this first version.</p></section>}
               <button type="button" className="text-button back-button" onClick={() => setMode('edit')}>← Edit this case</button>

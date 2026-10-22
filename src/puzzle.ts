@@ -50,6 +50,7 @@ export const puzzleSchema = z.object({
     id: z.string().min(1),
     name: z.string(),
     clue: z.string(),
+    portrait: z.string().optional(),
     isVictim: z.boolean(),
   })),
   caseClues: z.array(z.string()),

@@ -463,55 +463,64 @@
       "id": "amelia",
       "name": "Amelia",
       "clue": "There was a TV in her room, in the same row.",
-      "isVictim": false
+      "isVictim": false,
+      "portrait": "/people/crowded-house/amelia.jpg"
     },
     {
       "id": "birdie",
       "name": "Birdie",
       "clue": "There was someone else in her room who was sitting in a chair.",
-      "isVictim": false
+      "isVictim": false,
+      "portrait": "/people/crowded-house/birdie.jpg"
     },
     {
       "id": "chase",
       "name": "Chase",
       "clue": "Someone with glasses was in his room, south of him.",
-      "isVictim": false
+      "isVictim": false,
+      "portrait": "/people/crowded-house/chase.jpg"
     },
     {
       "id": "dan",
       "name": "Dan",
       "clue": "The room directly south of his was occupied.",
-      "isVictim": false
+      "isVictim": false,
+      "portrait": "/people/crowded-house/dan.jpg"
     },
     {
       "id": "evan",
       "name": "Evan",
       "clue": "He was not beside any wall.",
-      "isVictim": false
+      "isVictim": false,
+      "portrait": "/people/crowded-house/evan.jpg"
     },
     {
       "id": "fabienne",
       "name": "Fabienne",
       "clue": "She was alone with two women.",
-      "isVictim": false
+      "isVictim": false,
+      "portrait": "/people/crowded-house/fabienne.jpg"
     },
     {
       "id": "gus",
       "name": "Gus",
       "clue": "He was either in a chair or on a bed.",
-      "isVictim": false
+      "isVictim": false,
+      "portrait": "/people/crowded-house/gus.jpg"
     },
     {
       "id": "holly",
       "name": "Holly",
       "clue": "She was in the second column.",
-      "isVictim": false
+      "isVictim": false,
+      "portrait": "/people/crowded-house/holly.jpg"
     },
     {
       "id": "vincent",
       "name": "Vincent",
       "clue": "The victim. He is in the last remaining position.",
-      "isVictim": true
+      "isVictim": true,
+      "portrait": "/people/crowded-house/vincent.jpg"
     }
   ],
   "caseClues": [
