@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 196 100" aria-label="Bed">
+  <g transform="translate(0 100) rotate(-90)" stroke-linejoin="round">
+    <rect x="8" y="4" width="84" height="14" rx="3" fill="#7b536f" stroke="#392e3c" stroke-width="3"/>
+    <rect x="12" y="14" width="76" height="168" rx="4" fill="#a78ca8" stroke="#403842" stroke-width="3"/>
+    <rect x="17" y="19" width="66" height="56" rx="3" fill="#d8c9d9" stroke="#68576c" stroke-width="2"/>
+    <rect x="21" y="24" width="26" height="34" rx="5" fill="#f5e9d7" stroke="#8d8190" stroke-width="2"/>
+    <rect x="53" y="24" width="26" height="34" rx="5" fill="#f5e9d7" stroke="#8d8190" stroke-width="2"/>
+    <path d="M17 69h66v89H17z" fill="#b49dbb" stroke="#6b5d75" stroke-width="2"/>
+    <path d="M17 83h66m-66 56h66" stroke="#d9cbd9" stroke-width="3"/>
+    <path d="M17 157h66v20H17z" fill="#8f779a" stroke="#584b64" stroke-width="2"/>
+    <rect x="8" y="178" width="84" height="10" rx="2" fill="#6d516b" stroke="#392e3c" stroke-width="3"/>
+    <path d="M13 188v4m74-4v4" stroke="#40313f" stroke-width="5" stroke-linecap="round"/>
+  </g>
+</svg>

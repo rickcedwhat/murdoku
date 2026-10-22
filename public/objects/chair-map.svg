@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" aria-label="Chair">
+  <g stroke="#50505a" stroke-width="3" stroke-linejoin="round">
+    <path d="M19 18q31-13 62 0l-6 23H25z" fill="#c5bed0"/>
+    <rect x="23" y="32" width="54" height="48" rx="14" fill="#ddd7e4"/>
+    <path d="M14 36q0-8 8-9t11 8v41q-1 8-9 8t-10-9zM86 36q0-8-8-9t-11 8v41q1 8 9 8t10-9z" fill="#bdb5ca"/>
+    <path d="M29 56q21-8 42 0v19H29z" fill="#d2cadc"/>
+    <path d="M25 81v8m50-8v8" stroke="#5d5362" stroke-width="5" stroke-linecap="round"/>
+  </g>
+</svg>

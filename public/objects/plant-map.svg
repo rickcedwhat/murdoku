@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" aria-label="Plant">
+  <circle cx="50" cy="55" r="31" fill="#b48799" stroke="#4e4853" stroke-width="4"/>
+  <circle cx="50" cy="51" r="25" fill="#7b675d"/>
+  <g fill="#769879" stroke="#3e6151" stroke-width="2.5" stroke-linejoin="round">
+    <path d="M49 52Q23 33 26 10q27 7 23 42z"/>
+    <path d="M50 52Q61 20 81 17q0 26-31 35z"/>
+    <path d="M49 54Q16 50 10 69q27 13 39-15z"/>
+    <path d="M51 54q31-9 39 10-18 18-39-10z"/>
+    <path d="M50 55q-12 22 1 36 16-17-1-36z"/>
+  </g>
+  <circle cx="50" cy="54" r="5" fill="#56765b"/>
+</svg>

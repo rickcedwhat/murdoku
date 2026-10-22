@@ -48,13 +48,15 @@
 .tile-table.joined-w::before,.tile-table.joined-e::after,.tile-table.joined-s::before,.tile-table.joined-s::after{display:none}
 
 /* A bed is one two-cell object with a continuous illustration. */
-.object-bed-segment{display:block;width:100%;height:100%;background-image:url('/objects/bed-front.png');background-repeat:no-repeat;filter:drop-shadow(0 2px 1px #29313650)}
-.object-bed-segment.bed-horizontal{background-size:200% 100%}
+.object-bed-segment{display:block;width:100%;height:100%;background-repeat:no-repeat;filter:drop-shadow(0 2px 1px #29313650)}
+.object-bed-segment.bed-horizontal{background-image:url('/objects/bed-map-horizontal.svg');background-size:200% 100%}
 .object-bed-segment.bed-horizontal.bed-first{background-position:left center}
 .object-bed-segment.bed-horizontal.bed-second{background-position:right center}
-.object-bed-segment.bed-vertical{background-size:100% 200%}
+.object-bed-segment.bed-vertical{background-image:url('/objects/bed-map-vertical.svg');background-size:100% 200%}
 .object-bed-segment.bed-vertical.bed-first{background-position:center top}
 .object-bed-segment.bed-vertical.bed-second{background-position:center bottom}
+.object-bed-segment.bed-horizontal.bed-reverse{transform:scaleX(-1)}
+.object-bed-segment.bed-vertical.bed-reverse{transform:scaleY(-1)}
 .bed-direction{display:flex;align-items:center;flex-wrap:wrap;gap:5px;margin:7px 0 12px;color:#5b706b;font-size:11px;font-weight:750}
 .bed-direction button{border:1px solid #cbd8ce;border-radius:6px;background:#fff;color:#315747;padding:6px 8px;font-size:11px;font-weight:750}
 .bed-direction button.selected{background:#294d3d;border-color:#294d3d;color:#fff}

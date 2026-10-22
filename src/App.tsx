@@ -499,7 +499,7 @@ export default function App() {
                   >
                     {isPlayable && <>
                       {room && roomLabelCells.has(key) && <span className="cell-room">{room.name}</span>}
-                      {floorKind && <span className={`cell-object ${floorKind.art === 'table' || floorKind.art === 'carpet' || floorKind.art === 'bed' ? 'tile-cell-object' : ''}`} title={floorKind.name}><ObjectMark kind={floorKind} connections={connections} bedPart={bedPart} bedAxis={bedAxis} /></span>}
+                      {floorKind && <span className={`cell-object ${floorKind.art === 'table' || floorKind.art === 'carpet' || floorKind.art === 'bed' ? 'tile-cell-object' : ''}`} title={floorKind.name}><ObjectMark kind={floorKind} connections={connections} bedPart={bedPart} bedAxis={bedAxis} bedReverse={floorObject?.bedDirection === 'W' || floorObject?.bedDirection === 'N'} /></span>}
                       {wallObjects.map((object) => {
                         const wallKind = kindById.get(object.kindId);
                         return wallKind && <ObjectMark key={object.id} kind={wallKind} className={`wall-object wall-${object.side?.toLowerCase()}`} />;
