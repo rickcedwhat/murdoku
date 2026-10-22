@@ -34,9 +34,9 @@
 .board{border:0;overflow:visible}
 .board-scroll{padding-top:16px}
 .room-wall{position:absolute;z-index:5;background:#242321;pointer-events:none}
-.room-wall-top,.room-wall-bottom{left:-3px;width:calc(100% + 6px);height:6px}
-.room-wall-left,.room-wall-right{top:-3px;height:calc(100% + 6px);width:6px}
-.room-wall-top{top:-3px}.room-wall-bottom{bottom:-3px}.room-wall-left{left:-3px}.room-wall-right{right:-3px}
+.room-wall-top,.room-wall-bottom{left:-4px;width:calc(100% + 8px);height:6px}
+.room-wall-left,.room-wall-right{top:-4px;height:calc(100% + 8px);width:6px}
+.room-wall-top{top:-4px}.room-wall-bottom{bottom:-4px}.room-wall-left{left:-4px}.room-wall-right{right:-4px}
 .wall-object{z-index:7}.edge-target{z-index:9}
 .cell-room{z-index:8;top:3px;left:50%;max-width:none;width:max-content;overflow:visible;text-overflow:clip;transform:translateX(-50%);border:2px solid #242321;border-radius:999px;background:#fffaf0;box-shadow:0 2px 2px #28201728;padding:2px 8px;color:#263238;font-family:Georgia,serif;font-size:12px;font-weight:900;letter-spacing:.01em;line-height:1.1;white-space:nowrap;pointer-events:none}
 .cell-room.label-bottom{top:auto;bottom:3px}
