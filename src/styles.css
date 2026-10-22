@@ -49,10 +49,10 @@
 
 /* A bed is one two-cell object with a continuous illustration. */
 .object-bed-segment{display:block;width:100%;height:100%;background-repeat:no-repeat;filter:drop-shadow(0 2px 1px #29313650)}
-.object-bed-segment.bed-horizontal{background-image:url('/objects/bed-map-horizontal.svg');background-size:200% 100%}
+.object-bed-segment.bed-horizontal{background-image:url('/objects/bed-map-horizontal.svg?v=2');background-size:200% 100%}
 .object-bed-segment.bed-horizontal.bed-first{background-position:left center}
 .object-bed-segment.bed-horizontal.bed-second{background-position:right center}
-.object-bed-segment.bed-vertical{background-image:url('/objects/bed-map-vertical.svg');background-size:100% 200%}
+.object-bed-segment.bed-vertical{background-image:url('/objects/bed-map-vertical.svg?v=2');background-size:100% 200%}
 .object-bed-segment.bed-vertical.bed-first{background-position:center top}
 .object-bed-segment.bed-vertical.bed-second{background-position:center bottom}
 .object-bed-segment.bed-horizontal.bed-reverse{transform:scaleX(-1)}

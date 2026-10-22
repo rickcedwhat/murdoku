@@ -1,12 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" aria-label="Plant">
-  <circle cx="50" cy="55" r="31" fill="#b48799" stroke="#4e4853" stroke-width="4"/>
-  <circle cx="50" cy="51" r="25" fill="#7b675d"/>
-  <g fill="#769879" stroke="#3e6151" stroke-width="2.5" stroke-linejoin="round">
-    <path d="M49 52Q23 33 26 10q27 7 23 42z"/>
-    <path d="M50 52Q61 20 81 17q0 26-31 35z"/>
-    <path d="M49 54Q16 50 10 69q27 13 39-15z"/>
-    <path d="M51 54q31-9 39 10-18 18-39-10z"/>
-    <path d="M50 55q-12 22 1 36 16-17-1-36z"/>
+  <ellipse cx="53" cy="83" rx="31" ry="13" fill="#55565a" opacity=".7"/>
+  <path d="M25 66q3 24 26 24t26-24z" fill="#c8a3b9" stroke="#514d52" stroke-width="3"/>
+  <ellipse cx="51" cy="66" rx="27" ry="11" fill="#d9b8c9" stroke="#514d52" stroke-width="3"/>
+  <g fill="#759878" stroke="#4c6656" stroke-width="2.7" stroke-linejoin="round">
+    <path d="M49 66Q30 38 35 7q19 22 14 59z"/>
+    <path d="M50 67Q44 34 53 3q13 29-3 64z"/>
+    <path d="M52 67Q56 28 76 11q0 30-24 56z"/>
+    <path d="M47 65Q17 48 12 27q24 7 35 38z"/>
+    <path d="M54 67Q79 34 87 31q-3 26-33 36z"/>
+    <path d="M44 66Q18 64 10 49q21-2 34 17z"/>
+    <path d="M56 67Q73 51 90 52q-5 18-34 15z"/>
+    <path d="M49 68Q33 51 33 28q17 13 16 40z"/>
   </g>
-  <circle cx="50" cy="54" r="5" fill="#56765b"/>
+  <path d="M27 68q24 12 48 0" fill="none" stroke="#f0d5de" stroke-width="2"/>
 </svg>
