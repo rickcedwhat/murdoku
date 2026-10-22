@@ -14,66 +14,46 @@ import {
   validatePlacements,
   validatePuzzle,
   type Cell,
-  type Placement,
   type Puzzle,
 } from './puzzle';
 import { ObjectMark } from './ObjectMark';
-import { activeHypothesis, applyHypothesisToMain, changeDeduction, createHypothesis, discardHypothesis, newBranchWorkspace, parseBranchWorkspace, reconcileBranches, redoDeduction, renameHypothesis, restoreCheckpoint, saveCheckpoint, switchHypothesis, undoDeduction, type BranchWorkspace, type CellNote } from './branches';
+import { activeHypothesis, applyHypothesisToMain, changeDeduction, createHypothesis, discardHypothesis, newBranchWorkspace, reconcileBranches, redoDeduction, renameHypothesis, restoreCheckpoint, saveCheckpoint, switchHypothesis, undoDeduction, type BranchWorkspace } from './branches';
+import { CASE_LIBRARY_KEY, LEGACY_CASE_KEY, fillLineWithXs, newSavedCase, parseCaseLibrary, upsertCase, type SavedCase } from './cases';
 
 type Mode = 'edit' | 'play';
 type Tool = 'outline' | 'room' | 'object' | 'erase';
 type EditorTab = 'setup' | 'rooms' | 'furniture' | 'people' | 'rules';
-type NoteTool = 'candidate' | 'confirmed' | 'empty' | 'blocked' | 'erase';
-type SavedCase = { puzzle: Puzzle; branchWorkspace: BranchWorkspace };
-
-const STORAGE_KEY = 'murdoku-companion-v1';
+type NoteTool = 'candidate' | 'confirmed' | 'empty' | 'erase';
 const ROOM_COLORS = ['#d9e9df', '#f5e5cd', '#dce7f2', '#eadff0', '#f4deda', '#e8ebd6', '#e5dfea', '#dbece9'];
 
-function loadCase(): SavedCase {
+function loadCases(): SavedCase[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const saved = JSON.parse(raw) as { puzzle?: unknown; placements?: unknown; notes?: unknown; branchWorkspace?: unknown };
-      const parsed = parsePuzzle(saved.puzzle);
-      if (Array.isArray(saved.placements) || saved.branchWorkspace) {
-        const placements = (Array.isArray(saved.placements) ? saved.placements : []).filter((item): item is Placement =>
-          typeof item === 'object' && item !== null &&
-          typeof (item as Placement).suspectId === 'string' &&
-          typeof (item as Placement).cell === 'string',
-        );
-        const notes: Record<string, CellNote> = {};
-        if (saved.notes && typeof saved.notes === 'object' && !Array.isArray(saved.notes)) {
-          for (const [key, note] of Object.entries(saved.notes)) {
-            if (!parsed.playable.includes(key) || !note || typeof note !== 'object' || !('type' in note)) continue;
-            if (note.type === 'empty' || note.type === 'blocked') notes[key] = { type: note.type };
-            else if (note.type === 'candidates' && 'suspectIds' in note && Array.isArray(note.suspectIds)) notes[key] = { type: 'candidates', suspectIds: note.suspectIds.filter((id: unknown): id is string => typeof id === 'string' && parsed.suspects.some((suspect) => suspect.id === id)) };
-          }
-        }
-        return { puzzle: parsed, branchWorkspace: parseBranchWorkspace(saved.branchWorkspace, parsed, { placements, notes }) };
-      }
-    }
+    return parseCaseLibrary(localStorage.getItem(CASE_LIBRARY_KEY), localStorage.getItem(LEGACY_CASE_KEY));
   } catch {
-    // A damaged local save should not prevent the app from opening.
+    return [];
   }
-  return { puzzle: newPuzzle(), branchWorkspace: newBranchWorkspace() };
 }
 
 export default function App() {
-  const [initial] = useState(loadCase);
-  const [puzzle, setPuzzle] = useState<Puzzle>(initial.puzzle);
-  const [branchWorkspace, setBranchWorkspace] = useState<BranchWorkspace>(initial.branchWorkspace);
+  const [initial] = useState(loadCases);
+  const [cases, setCases] = useState<SavedCase[]>(initial);
+  const [activeCaseId, setActiveCaseId] = useState<string | null>(null);
+  const [puzzle, setPuzzle] = useState<Puzzle>(() => initial[0]?.puzzle ?? newPuzzle());
+  const [branchWorkspace, setBranchWorkspace] = useState<BranchWorkspace>(() => initial[0]?.branchWorkspace ?? newBranchWorkspace());
+  const [consideredSuspectIds, setConsideredSuspectIds] = useState<string[]>(initial[0]?.consideredSuspectIds ?? []);
   const [mode, setMode] = useState<Mode>('edit');
   const [editorTab, setEditorTab] = useState<EditorTab>('setup');
   const [playTab, setPlayTab] = useState<'people' | 'clues' | 'checks'>('clues');
   const [noteTool, setNoteTool] = useState<NoteTool>('candidate');
   const [tool, setTool] = useState<Tool>('room');
-  const [selectedRoom, setSelectedRoom] = useState(initial.puzzle.rooms[0]?.id ?? '');
-  const [selectedKind, setSelectedKind] = useState(initial.puzzle.objectKinds[0]?.id ?? '');
-  const [selectedSuspect, setSelectedSuspect] = useState(initial.puzzle.suspects[0]?.id ?? '');
+  const [selectedRoom, setSelectedRoom] = useState(initial[0]?.puzzle.rooms[0]?.id ?? '');
+  const [selectedKind, setSelectedKind] = useState(initial[0]?.puzzle.objectKinds[0]?.id ?? '');
+  const [activeNoteCell, setActiveNoteCell] = useState<Cell | null>(null);
   const [notice, setNotice] = useState('');
   const [saveFailed, setSaveFailed] = useState(false);
   const drawingPointer = useRef<number | null>(null);
   const paintedCells = useRef(new Set<string>());
+  const libraryReady = useRef(false);
 
   useEffect(() => {
     setBranchWorkspace((current) => {
@@ -83,14 +63,20 @@ export default function App() {
   }, [puzzle]);
 
   useEffect(() => {
+    if (!activeCaseId) return;
+    setCases((current) => upsertCase(current, { puzzle, branchWorkspace, consideredSuspectIds, lastMode: mode, updatedAt: new Date().toISOString() }));
+  }, [activeCaseId, puzzle, branchWorkspace, consideredSuspectIds, mode]);
+
+  useEffect(() => {
+    if (!libraryReady.current) { libraryReady.current = true; return; }
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ puzzle, branchWorkspace } satisfies SavedCase));
+      localStorage.setItem(CASE_LIBRARY_KEY, JSON.stringify({ version: 1, cases }));
       setSaveFailed(false);
     } catch (error) {
       console.warn('Could not save this case on this device.', error);
       setSaveFailed(true);
     }
-  }, [puzzle, branchWorkspace]);
+  }, [cases]);
 
   const playable = useMemo(() => new Set(puzzle.playable), [puzzle.playable]);
   const roomByCell = useMemo(() => {
@@ -117,38 +103,37 @@ export default function App() {
   const activeBranch = activeHypothesis(branchWorkspace);
   const { placements, notes } = activeBranch.present;
   const placementsByCell = useMemo(() => new Map(placements.map((placement) => [placement.cell, placement])), [placements]);
+  const selectedPlacement = placements.find((placement) => placement.cell === activeNoteCell);
+  const deductionCellSize = Math.max(42, Math.ceil(Math.sqrt(puzzle.suspects.length)) * 14);
   const setupProblems = validatePuzzle(puzzle);
   const playProblems = validatePlacements(puzzle, placements);
   function suspectLetter(id: string): string {
     const index = puzzle.suspects.findIndex((suspect) => suspect.id === id);
     if (index < 0) return '?';
-    const initial = puzzle.suspects[index].name.trim().slice(0, 1).toUpperCase() || '?';
-    return puzzle.suspects.filter((suspect) => suspect.name.trim().slice(0, 1).toUpperCase() === initial).length > 1
-      ? String.fromCharCode(65 + index)
-      : initial;
+    return String.fromCharCode(65 + index);
   }
 
-  function markCell(key: Cell) {
+  function markCell(key: Cell, suspectId?: string) {
     if (!playable.has(key)) return;
     const floor = floorObjectsByCell.get(key);
     if (floor && !kindById.get(floor.kindId)?.canOccupy) return;
     if (noteTool === 'confirmed') {
-      if (!selectedSuspect) return;
+      if (!suspectId) return;
       setBranchWorkspace((current) => changeDeduction(current, (state) => {
-        state.placements = state.placements.some((item) => item.suspectId === selectedSuspect && item.cell === key)
+        state.placements = state.placements.some((item) => item.suspectId === suspectId && item.cell === key)
           ? state.placements.filter((item) => item.cell !== key)
-          : [...state.placements.filter((item) => item.suspectId !== selectedSuspect && item.cell !== key), { suspectId: selectedSuspect, cell: key }];
+          : [...state.placements.filter((item) => item.suspectId !== suspectId && item.cell !== key), { suspectId, cell: key }];
         delete state.notes[key];
         return state;
       }));
       return;
     }
     if (noteTool === 'candidate') {
-      if (!selectedSuspect) return;
+      if (!suspectId) return;
       setBranchWorkspace((current) => changeDeduction(current, (state) => {
         state.placements = state.placements.filter((item) => item.cell !== key);
         const existing = state.notes[key]?.type === 'candidates' ? state.notes[key].suspectIds : [];
-        const suspectIds = existing.includes(selectedSuspect) ? existing.filter((id) => id !== selectedSuspect) : [...existing, selectedSuspect];
+        const suspectIds = existing.includes(suspectId) ? existing.filter((id) => id !== suspectId) : [...existing, suspectId];
         if (suspectIds.length) state.notes[key] = { type: 'candidates', suspectIds };
         else delete state.notes[key];
         return state;
@@ -165,7 +150,16 @@ export default function App() {
 
   function updatePuzzle(next: Puzzle) {
     setPuzzle(next);
+    setConsideredSuspectIds((current) => current.filter((id) => next.suspects.some((person) => person.id === id)));
     setNotice('');
+  }
+
+  function typePerson(key: Cell, typed: string) {
+    if (noteTool !== 'candidate' && noteTool !== 'confirmed') return false;
+    const person = puzzle.suspects.find((suspect) => suspectLetter(suspect.id).toLowerCase() === typed.toLowerCase());
+    if (!person) return false;
+    markCell(key, person.id);
+    return true;
   }
 
   function paintSelected(key: Cell) {
@@ -279,12 +273,10 @@ export default function App() {
       ...puzzle,
       suspects: [...puzzle.suspects, { id, name: `Person ${puzzle.suspects.length + 1}`, clue: '', isVictim: false }],
     });
-    setSelectedSuspect(id);
   }
 
   function removeSuspect(id: string) {
     updatePuzzle({ ...puzzle, suspects: puzzle.suspects.filter((item) => item.id !== id) });
-    if (selectedSuspect === id) setSelectedSuspect(puzzle.suspects.find((item) => item.id !== id)?.id ?? '');
   }
 
   function addObjectKind() {
@@ -326,13 +318,17 @@ export default function App() {
   async function importPuzzle(file: File | undefined) {
     if (!file) return;
     try {
-      const parsed = parsePuzzle(JSON.parse(await file.text()));
+      const imported = parsePuzzle(JSON.parse(await file.text()));
+      const parsed = { ...imported, id: crypto.randomUUID() };
       const problems = validatePuzzle(parsed);
+      setCases((current) => upsertCase(current, newSavedCase(parsed)));
+      setActiveCaseId(parsed.id);
       setPuzzle(parsed);
       setBranchWorkspace(newBranchWorkspace());
+      setConsideredSuspectIds([]);
       setSelectedRoom(parsed.rooms[0]?.id ?? '');
       setSelectedKind(parsed.objectKinds[0]?.id ?? '');
-      setSelectedSuspect(parsed.suspects[0]?.id ?? '');
+      setActiveNoteCell(null);
       setMode('edit');
       setEditorTab('setup');
       setNotice(problems.length ? `Case imported with ${problems.length} item${problems.length === 1 ? '' : 's'} to correct.` : 'Case imported.');
@@ -342,26 +338,52 @@ export default function App() {
   }
 
   function newCase() {
-    if (!window.confirm('Replace the current case? Export it first if you want a separate copy.')) return;
     const next = newPuzzle();
+    setCases((current) => upsertCase(current, newSavedCase(next)));
+    setActiveCaseId(next.id);
     setPuzzle(next);
     setBranchWorkspace(newBranchWorkspace());
+    setConsideredSuspectIds([]);
     setSelectedRoom(next.rooms[0].id);
     setSelectedKind(next.objectKinds[0].id);
-    setSelectedSuspect(next.suspects[0].id);
+    setActiveNoteCell(null);
     setMode('edit');
     setEditorTab('setup');
     setNotice('New case ready.');
   }
 
+  function openCase(saved: SavedCase) {
+    setActiveCaseId(saved.puzzle.id);
+    setPuzzle(saved.puzzle);
+    setBranchWorkspace(saved.branchWorkspace);
+    setConsideredSuspectIds(saved.consideredSuspectIds);
+    setSelectedRoom(saved.puzzle.rooms[0]?.id ?? '');
+    setSelectedKind(saved.puzzle.objectKinds[0]?.id ?? '');
+    setActiveNoteCell(null);
+    setMode(saved.lastMode);
+    setNotice('');
+  }
+
+  function toggleConsidered(id: string) {
+    setConsideredSuspectIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div className="brand"><span className="brand-mark">M</span><span>Murdoku <strong>Companion</strong></span></div>
+        <button type="button" className="brand brand-button" onClick={() => { setActiveCaseId(null); setNotice(''); }} aria-label="Go to cases"><span className="brand-mark">M</span><span>Murdoku <strong>Companion</strong></span></button>
         <div className="save-indicator"><span aria-hidden="true" /> {saveFailed ? 'Could not save on this device — export your case' : 'Saved on this device'}</div>
       </header>
 
       <main className="main-layout">
+        {activeCaseId === null ? <section className="home-page" aria-label="Your cases">
+          <div className="home-heading"><div><p className="eyebrow">CASE LIBRARY</p><h1>Your cases</h1><p className="subtitle">Create a scene or pick up where you left off.</p></div><div className="home-actions"><button type="button" className="primary-button" onClick={newCase}>+ New case</button><label className="file-button">Import JSON<input type="file" accept="application/json,.json" onChange={(event) => { void importPuzzle(event.target.files?.[0]); event.target.value = ''; }} /></label></div></div>
+          {notice && <p className="notice" role="status">{notice}</p>}
+          {cases.length ? <div className="case-list">{cases.map((saved) => <article className="case-card" key={saved.puzzle.id}>
+            <div><p className="eyebrow">{saved.puzzle.rows} × {saved.puzzle.cols} MAP · {saved.puzzle.suspects.length} PEOPLE</p><h2>{saved.puzzle.title.trim() || 'Untitled case'}</h2><p>{activeHypothesis(saved.branchWorkspace).present.placements.length} confirmed · Last worked on {new Date(saved.updatedAt).toLocaleDateString()}</p></div>
+            <button type="button" className="primary-button" onClick={() => openCase(saved)}>Continue →</button>
+          </article>)}</div> : <div className="empty-library"><h2>No cases yet</h2><p>Start by drawing your first map. It will appear here whenever you return.</p><button type="button" className="primary-button" onClick={newCase}>Create a case</button></div>}
+        </section> : <>
         <div className="page-heading">
           <div>
             <p className="eyebrow">MANUAL CASE BUILDER</p>
@@ -369,6 +391,7 @@ export default function App() {
             <p className="subtitle">{mode === 'edit' ? 'Build the illustrated scene, then solve on a separate deduction grid.' : 'Use the illustrated map as reference and mark your deductions on the smaller grid.'}</p>
           </div>
           <div className="mode-switch" role="group" aria-label="Mode">
+            <button type="button" onClick={() => setActiveCaseId(null)}>← Cases</button>
             <button type="button" className={mode === 'edit' ? 'active' : ''} onClick={() => setMode('edit')}>Edit map</button>
             <button type="button" className={mode === 'play' ? 'active' : ''} onClick={() => {
               if (setupProblems.length) { setNotice(setupProblems[0]); return; }
@@ -422,7 +445,7 @@ export default function App() {
                   return <div
                     key={key}
                     data-cell={key}
-                    className={`cell ${isPlayable ? '' : 'outside'} ${selected ? 'room-selected' : ''} ${floorKind && !floorKind.canOccupy ? 'blocked-cell' : ''} ${floorKind?.art === 'table' || floorKind?.art === 'carpet' ? 'tile-board-cell' : ''}`}
+                    className={`cell ${isPlayable ? '' : 'outside'} ${selected ? 'room-selected' : ''} ${floorKind?.art === 'table' || floorKind?.art === 'carpet' ? 'tile-board-cell' : ''}`}
                     role={mode === 'edit' ? 'button' : undefined}
                     tabIndex={mode === 'edit' ? 0 : undefined}
                     style={tileStyle}
@@ -472,12 +495,15 @@ export default function App() {
                 {activeBranch.id !== 'main' && <div className="branch-actions branch-outcomes"><button type="button" onClick={() => setBranchWorkspace(applyHypothesisToMain)}>Apply to Main</button><button type="button" onClick={() => setBranchWorkspace(discardHypothesis)}>Discard hypothesis</button></div>}
                 <div className="history-actions"><button type="button" disabled={!activeBranch.undo.length} onClick={() => setBranchWorkspace(undoDeduction)}>↶ Undo</button><button type="button" disabled={!activeBranch.redo.length} onClick={() => setBranchWorkspace(redoDeduction)}>↷ Redo</button><button type="button" onClick={() => setBranchWorkspace((current) => changeDeduction(current, () => ({ placements: [], notes: {} })))}>Reset notes</button></div>
               </div>
-              <p className="hint">Choose a mark, then tap the smaller grid. Tap a mark again to remove it.</p>
+              <p className="hint">Click a cell, then type a person's letter. Pencil letters are lowercase; confirmed letters are uppercase. Use Empty X for deductions; furniture blocks cells on the map.</p>
               <div className="note-tools" role="group" aria-label="Deduction mark">
-                {([['candidate', 'Pencil letters'], ['confirmed', 'Confirmed'], ['empty', 'Empty X'], ['blocked', 'Blocked /'], ['erase', 'Erase']] as const).map(([value, label]) => <button key={value} type="button" className={noteTool === value ? 'selected' : ''} onClick={() => setNoteTool(value)}>{label}</button>)}
+                {([['candidate', 'Pencil letters'], ['confirmed', 'Confirmed'], ['empty', 'Empty X'], ['erase', 'Erase']] as const).map(([value, label]) => <button key={value} type="button" className={noteTool === value ? 'selected' : ''} onClick={() => {
+                  setNoteTool(value);
+                  if (activeNoteCell) document.getElementById(`deduction-${activeNoteCell}`)?.focus();
+                }}>{label}</button>)}
               </div>
-              {(noteTool === 'candidate' || noteTool === 'confirmed') && <div className="note-people" role="group" aria-label="Choose person">{puzzle.suspects.map((suspect) => <button key={suspect.id} type="button" title={suspect.name} className={selectedSuspect === suspect.id ? 'selected' : ''} onClick={() => setSelectedSuspect(suspect.id)}>{suspectLetter(suspect.id)} <span>{suspect.name}</span></button>)}</div>}
-              <div className="deduction-scroll"><div className="deduction-grid" style={{ gridTemplateColumns: `repeat(${puzzle.cols}, 38px)` }}>{Array.from({ length: puzzle.rows * puzzle.cols }, (_, index) => {
+              {selectedPlacement && <div className="line-actions"><span>{suspectLetter(selectedPlacement.suspectId)} confirmed at row {coordinates(selectedPlacement.cell)[0] + 1}, column {coordinates(selectedPlacement.cell)[1] + 1}</span><button type="button" onClick={() => setBranchWorkspace((current) => fillLineWithXs(current, puzzle, selectedPlacement.cell, 'row'))}>Fill row Xs</button><button type="button" onClick={() => setBranchWorkspace((current) => fillLineWithXs(current, puzzle, selectedPlacement.cell, 'column'))}>Fill column Xs</button></div>}
+              <div className="deduction-scroll"><div className="deduction-grid" style={{ gridTemplateColumns: `repeat(${puzzle.cols}, ${deductionCellSize}px)` }}>{Array.from({ length: puzzle.rows * puzzle.cols }, (_, index) => {
                 const row = Math.floor(index / puzzle.cols);
                 const col = index % puzzle.cols;
                 const key = cell(row, col);
@@ -488,9 +514,9 @@ export default function App() {
                 const note = notes[key];
                 const placement = placementsByCell.get(key);
                 const confirmed = puzzle.suspects.find((suspect) => suspect.id === placement?.suspectId);
-                const candidates = note?.type === 'candidates' ? note.suspectIds.map((id) => suspectLetter(id).toLowerCase()).join('') : '';
-                const mark = fixedBlocked || note?.type === 'blocked' ? '' : note?.type === 'empty' ? 'X' : confirmed ? suspectLetter(confirmed.id) : candidates;
-                return <button key={key} type="button" className={`deduction-cell ${!isPlayable ? 'outside' : ''} ${fixedBlocked || note?.type === 'blocked' ? 'slash' : ''} ${confirmed ? 'confirmed' : ''} ${candidates ? 'candidates' : ''}`} style={isPlayable && roomIndex !== undefined ? { backgroundColor: ROOM_COLORS[roomIndex % ROOM_COLORS.length], borderTopWidth: row === 0 || roomByCell.get(cell(row - 1, col)) !== roomIndex ? 2 : 1, borderLeftWidth: col === 0 || roomByCell.get(cell(row, col - 1)) !== roomIndex ? 2 : 1 } : undefined} disabled={!isPlayable || fixedBlocked} onClick={() => markCell(key)} aria-label={`Row ${row + 1}, column ${col + 1}: ${!isPlayable ? 'outside map' : fixedBlocked ? 'blocked by furniture' : confirmed ? `confirmed ${confirmed.name}` : note?.type === 'candidates' ? `possible ${note.suspectIds.map((id) => puzzle.suspects.find((suspect) => suspect.id === id)?.name).join(', ')}` : note?.type === 'empty' ? 'empty' : note?.type === 'blocked' ? 'marked blocked' : 'unmarked'}`}>{mark}</button>;
+                const candidateIds = note?.type === 'candidates' ? note.suspectIds : [];
+                const mark = fixedBlocked ? '' : note?.type === 'empty' || note?.type === 'blocked' ? 'X' : confirmed ? suspectLetter(confirmed.id) : candidateIds.length ? <span className="candidate-grid" style={{ gridTemplateColumns: `repeat(${Math.max(3, Math.ceil(Math.sqrt(puzzle.suspects.length)))}, 1fr)` }}>{Array.from({ length: Math.max(9, puzzle.suspects.length) }, (_, slot) => <span className="candidate-slot" key={slot}>{puzzle.suspects[slot] && candidateIds.includes(puzzle.suspects[slot].id) ? suspectLetter(puzzle.suspects[slot].id).toLowerCase() : ''}</span>)}</span> : '';
+                return <button key={key} id={`deduction-${key}`} type="button" className={`deduction-cell ${!isPlayable ? 'outside' : ''} ${fixedBlocked ? 'slash' : ''} ${confirmed ? 'confirmed' : ''} ${candidateIds.length ? 'candidates' : ''} ${activeNoteCell === key ? 'active' : ''}`} style={isPlayable && roomIndex !== undefined ? { backgroundColor: ROOM_COLORS[roomIndex % ROOM_COLORS.length], borderTopWidth: row === 0 || roomByCell.get(cell(row - 1, col)) !== roomIndex ? 2 : 1, borderLeftWidth: col === 0 || roomByCell.get(cell(row, col - 1)) !== roomIndex ? 2 : 1, width: deductionCellSize, height: deductionCellSize } : { width: deductionCellSize, height: deductionCellSize }} disabled={!isPlayable || fixedBlocked} aria-pressed={activeNoteCell === key} onClick={() => { setActiveNoteCell(key); if (noteTool !== 'candidate' && noteTool !== 'confirmed') markCell(key); }} onKeyDown={(event) => { if (!event.repeat && event.key.length === 1 && typePerson(key, event.key)) event.preventDefault(); }} aria-label={`Row ${row + 1}, column ${col + 1}: ${!isPlayable ? 'outside map' : fixedBlocked ? 'blocked by furniture' : confirmed ? `confirmed ${confirmed.name}` : note?.type === 'candidates' ? `possible ${note.suspectIds.map((id) => puzzle.suspects.find((suspect) => suspect.id === id)?.name).join(', ')}` : note?.type === 'empty' || note?.type === 'blocked' ? 'empty' : 'unmarked'}`}>{mark}</button>;
               })}</div></div>
             </section>}
           </section>
@@ -569,9 +595,9 @@ export default function App() {
               </section>
             </> : <>
               <nav className="sidebar-tabs play-tabs" aria-label="Play case panels">{([['clues', 'Clues'], ['people', 'People'], ['checks', 'Checks']] as const).map(([value, label]) => <button key={value} type="button" className={playTab === value ? 'active' : ''} onClick={() => setPlayTab(value)}>{label}</button>)}</nav>
-              {playTab === 'people' && <section className="card"><div className="card-title"><h2>People</h2></div><p className="hint">Choose a person by the deduction grid to mark candidates or confirm a position.</p><div className="suspect-list">{puzzle.suspects.map((suspect) => {
+              {playTab === 'people' && <section className="card"><div className="card-title"><h2>People</h2></div><p className="hint">Type these letters into an active deduction cell. Check a person once you have considered every possible spot.</p><div className="suspect-list">{puzzle.suspects.map((suspect) => {
                 const placed = placements.find((item) => item.suspectId === suspect.id);
-                return <div className="suspect-item" key={suspect.id}><button type="button" className={selectedSuspect === suspect.id ? 'selected' : ''} onClick={() => { setSelectedSuspect(suspect.id); setNoteTool('candidate'); }}><span className="suspect-avatar">{suspectLetter(suspect.id)}</span><span><strong>{suspect.name}</strong><small>{placed ? `Row ${coordinates(placed.cell)[0] + 1}, column ${coordinates(placed.cell)[1] + 1}` : 'Not placed'}</small></span></button>{placed && <button type="button" className="icon-button" aria-label={`Remove ${suspect.name} from board`} onClick={() => setBranchWorkspace((current) => changeDeduction(current, (state) => ({ ...state, placements: state.placements.filter((item) => item.suspectId !== suspect.id) })))}>×</button>}</div>;
+                return <div className="suspect-item" key={suspect.id}><div className="suspect-summary"><span className="suspect-avatar">{suspectLetter(suspect.id)}</span><span><strong>{suspect.name}</strong><small>{placed ? `Row ${coordinates(placed.cell)[0] + 1}, column ${coordinates(placed.cell)[1] + 1}` : 'Not placed'}</small></span></div><label className="checkbox-label considered-check"><input type="checkbox" checked={consideredSuspectIds.includes(suspect.id)} onChange={() => toggleConsidered(suspect.id)} aria-label={`${suspect.name} fully considered`} />✓</label>{placed && <button type="button" className="icon-button" aria-label={`Remove ${suspect.name} from board`} onClick={() => setBranchWorkspace((current) => changeDeduction(current, (state) => ({ ...state, placements: state.placements.filter((item) => item.suspectId !== suspect.id) })))}>×</button>}</div>;
               })}</div></section>}
               {playTab === 'clues' && <section className="card"><div className="card-title"><h2>Clues</h2></div>{puzzle.caseClues.filter(Boolean).map((clue, index) => <p className="clue" key={index}>{clue}</p>)}{puzzle.suspects.filter((suspect) => suspect.clue.trim()).map((suspect) => <p className="clue" key={suspect.id}><strong>{suspect.name}:</strong> {suspect.clue}</p>)}{!puzzle.caseClues.some(Boolean) && !puzzle.suspects.some((suspect) => suspect.clue.trim()) && <p className="empty-note">No clues entered yet.</p>}</section>}
               {playTab === 'checks' && playProblems.length > 0 && <section className="card issue-card" role="status"><h2>Check these placements</h2><ul>{playProblems.map((problem) => <li key={problem}>{problem}</li>)}</ul></section>}
@@ -580,6 +606,7 @@ export default function App() {
             </>}
           </aside>
         </div>
+        </>}
       </main>
     </div>
   );

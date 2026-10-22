@@ -91,7 +91,8 @@ function pruneDeduction(state: Deduction, puzzle: Puzzle): Deduction {
   const notes: Record<string, CellNote> = {};
   for (const [key, note] of Object.entries(state.notes)) {
     if (!playable.has(key) || blocked.has(key)) continue;
-    if (note.type !== 'candidates') notes[key] = note;
+    if (note.type === 'blocked') notes[key] = { type: 'empty' };
+    else if (note.type !== 'candidates') notes[key] = note;
     else {
       const suspectIds = note.suspectIds.filter((id) => suspects.has(id));
       if (suspectIds.length) notes[key] = { type: 'candidates', suspectIds };
