@@ -31,10 +31,15 @@
 .deduction-cell.active{box-shadow:inset 0 0 0 2px #bf7e35,0 0 0 2px #bf7e35;position:relative;z-index:1}.suspect-summary{display:flex;align-items:center;gap:10px;flex:1;min-width:0;border:1px solid #e0e5e2;background:#fbfcfa;border-radius:9px;padding:8px}.suspect-summary strong{display:block;font-size:12px}.suspect-summary small{display:block;color:#879499;font-size:10px;margin-top:2px}.considered-check{margin:0;white-space:nowrap}
 
 /* Book-style room boundaries and wall labels. */
-.board{border:4px solid #242321;overflow:visible}
+.board{border:0;overflow:visible}
 .board-scroll{padding-top:16px}
-.cell-room{z-index:8;top:5px;left:50%;max-width:none;width:max-content;overflow:visible;text-overflow:clip;transform:translateX(-50%);border:2px solid #242321;border-radius:999px;background:#fffaf0;box-shadow:0 2px 2px #28201728;padding:2px 8px;color:#263238;font-family:Georgia,serif;font-size:11px;font-weight:900;letter-spacing:.01em;line-height:1.1;white-space:nowrap;pointer-events:none}
-.cell-room.label-bottom{top:auto;bottom:5px}
+.room-wall{position:absolute;z-index:5;background:#242321;pointer-events:none}
+.room-wall-top,.room-wall-bottom{left:-3px;width:calc(100% + 6px);height:6px}
+.room-wall-left,.room-wall-right{top:-3px;height:calc(100% + 6px);width:6px}
+.room-wall-top{top:-3px}.room-wall-bottom{bottom:-3px}.room-wall-left{left:-3px}.room-wall-right{right:-3px}
+.wall-object{z-index:7}.edge-target{z-index:9}
+.cell-room{z-index:8;top:3px;left:50%;max-width:none;width:max-content;overflow:visible;text-overflow:clip;transform:translateX(-50%);border:2px solid #242321;border-radius:999px;background:#fffaf0;box-shadow:0 2px 2px #28201728;padding:2px 8px;color:#263238;font-family:Georgia,serif;font-size:12px;font-weight:900;letter-spacing:.01em;line-height:1.1;white-space:nowrap;pointer-events:none}
+.cell-room.label-bottom{top:auto;bottom:3px}
 
 /* Tables have a small floor margin; joined tiles share one top and two front legs. */
 .cell-object.tile-cell-object{inset:0}

@@ -109,7 +109,7 @@ export default function App() {
     for (const room of puzzle.rooms) {
       const roomCells = new Set(room.cells);
       const roomCenter = room.cells.reduce((sum, key) => sum + coordinates(key)[1] + 0.5, 0) / Math.max(room.cells.length, 1);
-      const fontSize = room.name.length > 11 ? 10 : 11;
+      const fontSize = room.name.length > 11 ? 11 : 12;
       if (context) context.font = `900 ${fontSize}px Georgia`;
       const labelWidth = ((context?.measureText(room.name.toUpperCase()).width ?? room.name.length * fontSize * 0.65) + 22) / cellWidth;
       const candidates: { key: Cell; edge: 'top' | 'bottom'; left: string; blocked: number; spill: number; score: number }[] = [];
@@ -498,16 +498,14 @@ export default function App() {
                   });
                   const wallObjects = wallObjectsByCell.get(key) ?? [];
                   const selected = mode === 'edit' && tool === 'room' && room?.id === selectedRoom;
+                  const roomWalls = isPlayable && roomIndex !== undefined ? {
+                    top: row === 0 || roomByCell.get(cell(row - 1, col)) !== roomIndex,
+                    left: col === 0 || roomByCell.get(cell(row, col - 1)) !== roomIndex,
+                    bottom: row === puzzle.rows - 1 || !playable.has(cell(row + 1, col)),
+                    right: col === puzzle.cols - 1 || !playable.has(cell(row, col + 1)),
+                  } : null;
                   const tileStyle = isPlayable && roomIndex !== undefined ? {
                     backgroundColor: ROOM_COLORS[roomIndex % ROOM_COLORS.length],
-                    borderTopWidth: row === 0 || roomByCell.get(cell(row - 1, col)) !== roomIndex ? 4 : 1,
-                    borderLeftWidth: col === 0 || roomByCell.get(cell(row, col - 1)) !== roomIndex ? 4 : 1,
-                    borderBottomWidth: row === puzzle.rows - 1 || !playable.has(cell(row + 1, col)) ? 4 : 1,
-                    borderRightWidth: col === puzzle.cols - 1 || !playable.has(cell(row, col + 1)) ? 4 : 1,
-                    borderTopColor: row === 0 || roomByCell.get(cell(row - 1, col)) !== roomIndex ? '#242321' : '#9ba9a7',
-                    borderLeftColor: col === 0 || roomByCell.get(cell(row, col - 1)) !== roomIndex ? '#242321' : '#9ba9a7',
-                    borderBottomColor: row === puzzle.rows - 1 || !playable.has(cell(row + 1, col)) ? '#242321' : '#9ba9a7',
-                    borderRightColor: col === puzzle.cols - 1 || !playable.has(cell(row, col + 1)) ? '#242321' : '#9ba9a7',
                   } : undefined;
                   return <div
                     key={key}
@@ -522,6 +520,10 @@ export default function App() {
                     onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); handleCell(key); } }}
                   >
                     {isPlayable && <>
+                      {roomWalls?.top && <span className="room-wall room-wall-top" aria-hidden="true" />}
+                      {roomWalls?.left && <span className="room-wall room-wall-left" aria-hidden="true" />}
+                      {roomWalls?.bottom && <span className="room-wall room-wall-bottom" aria-hidden="true" />}
+                      {roomWalls?.right && <span className="room-wall room-wall-right" aria-hidden="true" />}
                       {room && roomLabels.has(key) && <span className={`cell-room label-${roomLabels.get(key)?.edge}`} style={{ left: roomLabels.get(key)?.left, fontSize: roomLabels.get(key)?.fontSize }}>{room.name}</span>}
                       {floorKind && <span className={`cell-object ${floorKind.art === 'table' || floorKind.art === 'carpet' || floorKind.art === 'bed' ? 'tile-cell-object' : ''}`} title={floorKind.name}><ObjectMark kind={floorKind} connections={connections} bedPart={bedPart} bedAxis={bedAxis} bedReverse={floorObject?.bedDirection === 'W' || floorObject?.bedDirection === 'N'} /></span>}
                       {wallObjects.map((object) => {
