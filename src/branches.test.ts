@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { activeHypothesis, applyHypothesisToMain, changeDeduction, createHypothesis, discardHypothesis, newBranchWorkspace, parseBranchWorkspace, reconcileBranches, redoDeduction, restoreCheckpoint, saveCheckpoint, switchHypothesis, undoDeduction } from './branches';
-import { cell, newPuzzle } from './puzzle';
+import { cell, newPuzzle, placeObject } from './puzzle';
 
 describe('hypothesis branches', () => {
   const mark = (at: string, suspectId: string) => (state: ReturnType<typeof activeHypothesis>['present']) => ({ ...state, notes: { ...state.notes, [at]: { type: 'candidates' as const, suspectIds: [suspectId] } } });
@@ -68,5 +68,24 @@ describe('hypothesis branches', () => {
     const legacy = { placements: [{ suspectId: puzzle.suspects[0].id, cell: cell(1, 1) }], notes: { [cell(1, 2)]: { type: 'empty' as const } } };
     const restored = parseBranchWorkspace(undefined, puzzle, legacy);
     expect(activeHypothesis(restored).present).toEqual(legacy);
+  });
+
+  it('removes placements hidden by new furniture from every hypothesis and its history', () => {
+    let puzzle = newPuzzle();
+    const blockedCell = cell(0, 0);
+    let workspace = newBranchWorkspace({ placements: [{ suspectId: puzzle.suspects[0].id, cell: blockedCell }], notes: {} });
+    workspace = saveCheckpoint(workspace);
+    workspace = createHypothesis(workspace);
+    workspace = changeDeduction(workspace, mark(cell(1, 1), puzzle.suspects[1].id));
+    workspace = undoDeduction(workspace);
+    puzzle = placeObject(puzzle, 'table', blockedCell);
+    workspace = reconcileBranches(workspace, puzzle);
+    for (const branch of workspace.branches) {
+      for (const state of [branch.present, ...branch.undo, ...branch.redo]) {
+        expect(state.placements.some((item) => item.cell === blockedCell)).toBe(false);
+      }
+    }
+    expect(workspace.checkpoint?.state.placements.some((item) => item.cell === blockedCell)).toBe(false);
+    expect(activeHypothesis(redoDeduction(workspace)).present.placements.some((item) => item.cell === blockedCell)).toBe(false);
   });
 });

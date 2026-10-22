@@ -76,6 +76,13 @@ export default function App() {
   const paintedCells = useRef(new Set<string>());
 
   useEffect(() => {
+    setBranchWorkspace((current) => {
+      const reconciled = reconcileBranches(current, puzzle);
+      return JSON.stringify(reconciled) === JSON.stringify(current) ? current : reconciled;
+    });
+  }, [puzzle]);
+
+  useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({ puzzle, branchWorkspace } satisfies SavedCase));
       setSaveFailed(false);
@@ -158,7 +165,6 @@ export default function App() {
 
   function updatePuzzle(next: Puzzle) {
     setPuzzle(next);
-    setBranchWorkspace((current) => reconcileBranches(current, next));
     setNotice('');
   }
 
@@ -172,7 +178,6 @@ export default function App() {
       if (!kind) return;
       if (kind.onWall) return;
       setPuzzle((current) => placeObject(current, selectedKind, key));
-      if (!kind.onWall && !kind.canOccupy) setBranchWorkspace((current) => changeDeduction(current, (state) => ({ ...state, placements: state.placements.filter((item) => item.cell !== key) })));
     }
     setNotice('');
   }

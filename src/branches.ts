@@ -86,16 +86,18 @@ export function discardHypothesis(workspace: BranchWorkspace): BranchWorkspace {
 function pruneDeduction(state: Deduction, puzzle: Puzzle): Deduction {
   const playable = new Set(puzzle.playable);
   const suspects = new Set(puzzle.suspects.map((suspect) => suspect.id));
+  const blockingKinds = new Set(puzzle.objectKinds.filter((kind) => !kind.onWall && !kind.canOccupy).map((kind) => kind.id));
+  const blocked = new Set(puzzle.objects.filter((object) => !object.side && blockingKinds.has(object.kindId)).map((object) => object.cell));
   const notes: Record<string, CellNote> = {};
   for (const [key, note] of Object.entries(state.notes)) {
-    if (!playable.has(key)) continue;
+    if (!playable.has(key) || blocked.has(key)) continue;
     if (note.type !== 'candidates') notes[key] = note;
     else {
       const suspectIds = note.suspectIds.filter((id) => suspects.has(id));
       if (suspectIds.length) notes[key] = { type: 'candidates', suspectIds };
     }
   }
-  return { placements: state.placements.filter((item) => playable.has(item.cell) && suspects.has(item.suspectId)), notes };
+  return { placements: state.placements.filter((item) => playable.has(item.cell) && suspects.has(item.suspectId) && !blocked.has(item.cell)), notes };
 }
 
 export function reconcileBranches(workspace: BranchWorkspace, puzzle: Puzzle): BranchWorkspace {
