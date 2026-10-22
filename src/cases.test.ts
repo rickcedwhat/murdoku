@@ -7,11 +7,12 @@ describe('case library', () => {
   it('migrates a single browser save and retains it alongside a new case', () => {
     const puzzle = newPuzzle();
     puzzle.title = 'Old case';
-    const legacy = JSON.stringify({ puzzle, placements: [{ suspectId: puzzle.suspects[0].id, cell: cell(1, 1) }], notes: {} });
+    const legacy = JSON.stringify({ puzzle, placements: [{ suspectId: puzzle.suspects[0].id, cell: cell(1, 1) }], notes: { [cell(1, 2)]: { type: 'blocked' } } });
     const migrated = parseCaseLibrary(null, legacy);
     expect(migrated).toHaveLength(1);
     expect(migrated[0].puzzle.title).toBe('Old case');
     expect(activeHypothesis(migrated[0].branchWorkspace).present.placements[0].cell).toBe(cell(1, 1));
+    expect(activeHypothesis(migrated[0].branchWorkspace).present.notes[cell(1, 2)]).toEqual({ type: 'empty' });
     const next = newSavedCase(newPuzzle());
     const library = upsertCase(migrated, next);
     expect(parseCaseLibrary(JSON.stringify({ version: 1, cases: library }), legacy).map((saved) => saved.puzzle.id))

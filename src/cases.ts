@@ -21,7 +21,7 @@ function legacyDeduction(raw: Record<string, unknown>, puzzle: Puzzle) {
   if (raw.notes && typeof raw.notes === 'object' && !Array.isArray(raw.notes)) {
     for (const [key, value] of Object.entries(raw.notes)) {
       if (!puzzle.playable.includes(key) || !value || typeof value !== 'object' || !('type' in value)) continue;
-      if (value.type === 'empty' || value.type === 'blocked') notes[key] = { type: value.type };
+      if (value.type === 'empty' || value.type === 'blocked') notes[key] = { type: 'empty' };
       else if (value.type === 'candidates' && 'suspectIds' in value && Array.isArray(value.suspectIds)) {
         notes[key] = { type: 'candidates', suspectIds: value.suspectIds.filter((id: unknown): id is string => typeof id === 'string') };
       }
