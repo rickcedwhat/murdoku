@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { assignCellToRoom, cell, isWallEdge, newPuzzle, normalizeRuleCount, parsePuzzle, placeObject, resizePuzzle, validatePlacements, validatePuzzle } from './puzzle';
+import { assignCellToRoom, cell, isWallEdge, newPuzzle, normalizeRuleCount, objectCells, parsePuzzle, placeObject, resizePuzzle, validatePlacements, validatePuzzle } from './puzzle';
 
 describe('puzzle rules', () => {
+  it('places a bed across two cells and rejects a footprint crossing a room wall', () => {
+    let puzzle = newPuzzle();
+    puzzle = placeObject(puzzle, 'bed', cell(1, 1), undefined, 'E');
+    expect(objectCells(puzzle, puzzle.objects[0])).toEqual([cell(1, 1), cell(1, 2)]);
+    expect(validatePuzzle(puzzle)).toEqual([]);
+    puzzle = placeObject(puzzle, 'table', cell(1, 2));
+    expect(puzzle.objects.map((object) => object.kindId)).toEqual(['table']);
+    const split = assignCellToRoom({ ...puzzle, rooms: [...puzzle.rooms, { id: 'other', name: 'Other', cells: [] }] }, cell(2, 2), 'other');
+    expect(placeObject(split, 'bed', cell(2, 1), undefined, 'E')).toBe(split);
+  });
   it('keeps an existing case when an older save has a fractional rule count', () => {
     const puzzle = newPuzzle();
     puzzle.title = 'Saved case';

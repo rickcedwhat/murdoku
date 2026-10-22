@@ -29,3 +29,32 @@
 .note-person{display:flex;align-items:stretch;gap:3px}.note-people .note-person>button:first-child{border-radius:8px 3px 3px 8px}.considered-button,.note-people .considered-button{display:grid;place-items:center;flex:none;min-width:30px;border:1px solid #cbd8ce;border-radius:7px;background:#fff;color:#a3b5a9;font-size:17px;font-weight:850;padding:2px 7px}.considered-button.done,.note-people .considered-button.done{background:#2a7051;border-color:#2a7051;color:#fff}.note-people .considered-button{border-radius:3px 8px 8px 3px}.suspect-item>.considered-button{height:39px}.candidate-grid{display:grid;width:100%;height:100%;align-items:center;justify-items:center;font-family:Georgia,serif;font-size:11px;font-weight:700;line-height:1}.candidate-slot{min-width:0;min-height:0}.deduction-cell.candidates{padding:2px;letter-spacing:0}.line-actions{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin:0 0 12px;color:#5d7169;font-size:11px;font-weight:700}.line-actions span{margin-right:3px}.line-actions button{border:1px solid #bed3c4;background:#eaf4ec;color:#285943;border-radius:7px;padding:6px 9px;font-size:11px;font-weight:750}
 @media(max-width:640px){.home-heading{align-items:flex-start;flex-direction:column}.home-actions{width:100%}.home-actions .primary-button{flex:1}.case-card{min-height:160px}.candidate-grid{font-size:10px}}
 .deduction-cell.active{box-shadow:inset 0 0 0 2px #bf7e35,0 0 0 2px #bf7e35;position:relative;z-index:1}.suspect-summary{display:flex;align-items:center;gap:10px;flex:1;min-width:0;border:1px solid #e0e5e2;background:#fbfcfa;border-radius:9px;padding:8px}.suspect-summary strong{display:block;font-size:12px}.suspect-summary small{display:block;color:#879499;font-size:10px;margin-top:2px}.considered-check{margin:0;white-space:nowrap}
+
+/* Book-style room boundaries and wall labels. */
+.board{border:4px solid #242321;overflow:visible}
+.board-scroll{padding-top:16px}
+.cell-room{z-index:8;top:-13px;left:50%;max-width:none;width:max-content;overflow:visible;text-overflow:clip;transform:translateX(-50%);border:2px solid #242321;border-radius:999px;background:#fffaf0;box-shadow:0 2px 2px #28201728;padding:2px 8px;color:#263238;font-family:Georgia,serif;font-size:11px;font-weight:900;letter-spacing:.01em;line-height:1.1;white-space:nowrap}
+
+/* Tables have a small floor margin; joined tiles share one top and two front legs. */
+.cell-object.tile-cell-object{inset:0}
+.tile-cell-object .object-tile{position:absolute;inset:4px;width:auto;height:auto;box-shadow:inset 0 2px #ffffff70}
+.tile-cell-object .tile-table{border:2px solid #544552;border-bottom:4px solid #493c49;border-radius:3px;background:linear-gradient(150deg,#d8c7da,#ae95b7)}
+.tile-cell-object .tile-table.joined-n{top:0;border-top:0;border-radius:0 0 3px 3px}
+.tile-cell-object .tile-table.joined-e{right:0;border-right:0;border-radius:3px 0 0 3px}
+.tile-cell-object .tile-table.joined-s{bottom:0;border-bottom:0;border-radius:3px 3px 0 0}
+.tile-cell-object .tile-table.joined-w{left:0;border-left:0;border-radius:0 3px 3px 0}
+.tile-table::before,.tile-table::after{content:"";position:absolute;bottom:-10px;width:5px;height:7px;border:1px solid #40353f;border-radius:0 0 2px 2px;background:#786178}
+.tile-table::before{left:2px}.tile-table::after{right:2px}
+.tile-table.joined-w::before,.tile-table.joined-e::after,.tile-table.joined-s::before,.tile-table.joined-s::after{display:none}
+
+/* A bed is one two-cell object with a continuous illustration. */
+.object-bed-segment{display:block;width:100%;height:100%;background-image:url('/objects/bed-front.png');background-repeat:no-repeat;filter:drop-shadow(0 2px 1px #29313650)}
+.object-bed-segment.bed-horizontal{background-size:200% 100%}
+.object-bed-segment.bed-horizontal.bed-first{background-position:left center}
+.object-bed-segment.bed-horizontal.bed-second{background-position:right center}
+.object-bed-segment.bed-vertical{background-size:100% 200%}
+.object-bed-segment.bed-vertical.bed-first{background-position:center top}
+.object-bed-segment.bed-vertical.bed-second{background-position:center bottom}
+.bed-direction{display:flex;align-items:center;flex-wrap:wrap;gap:5px;margin:7px 0 12px;color:#5b706b;font-size:11px;font-weight:750}
+.bed-direction button{border:1px solid #cbd8ce;border-radius:6px;background:#fff;color:#315747;padding:6px 8px;font-size:11px;font-weight:750}
+.bed-direction button.selected{background:#294d3d;border-color:#294d3d;color:#fff}

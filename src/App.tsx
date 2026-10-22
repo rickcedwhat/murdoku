@@ -7,6 +7,7 @@ import {
   isWallEdge,
   newPuzzle,
   normalizeRuleCount,
+  objectCells,
   OBJECT_ART,
   parsePuzzle,
   placeObject,
@@ -15,6 +16,7 @@ import {
   validatePuzzle,
   type Cell,
   type Puzzle,
+  type WallSide,
 } from './puzzle';
 import { ObjectMark } from './ObjectMark';
 import { activeHypothesis, applyHypothesisToMain, changeDeduction, createHypothesis, discardHypothesis, newBranchWorkspace, reconcileBranches, redoDeduction, renameHypothesis, restoreCheckpoint, saveCheckpoint, switchHypothesis, undoDeduction, type BranchWorkspace } from './branches';
@@ -48,6 +50,7 @@ export default function App() {
   const [tool, setTool] = useState<Tool>('room');
   const [selectedRoom, setSelectedRoom] = useState(initial[0]?.puzzle.rooms[0]?.id ?? '');
   const [selectedKind, setSelectedKind] = useState(initial[0]?.puzzle.objectKinds[0]?.id ?? '');
+  const [bedDirection, setBedDirection] = useState<WallSide>('E');
   const [activeNoteCell, setActiveNoteCell] = useState<Cell | null>(null);
   const [notice, setNotice] = useState('');
   const [saveFailed, setSaveFailed] = useState(false);
@@ -84,14 +87,39 @@ export default function App() {
     puzzle.rooms.forEach((room, index) => room.cells.forEach((key) => byCell.set(key, index)));
     return byCell;
   }, [puzzle.rooms]);
-  const roomLabelCells = useMemo(() => new Set(puzzle.rooms.map((room) =>
-    [...room.cells].sort((a, b) => {
-      const [ar, ac] = coordinates(a);
-      const [br, bc] = coordinates(b);
-      return ar - br || ac - bc;
-    })[0],
-  ).filter(Boolean)), [puzzle.rooms]);
-  const floorObjectsByCell = useMemo(() => new Map(puzzle.objects.filter((object) => !object.side).map((object) => [object.cell, object])), [puzzle.objects]);
+  const roomLabelCells = useMemo(() => {
+    const anchors = new Set<Cell>();
+    for (const room of puzzle.rooms) {
+      const topEdges = room.cells.filter((key) => {
+        const [row, col] = coordinates(key);
+        return !room.cells.includes(cell(row - 1, col));
+      });
+      const runs: Cell[][] = [];
+      for (const key of topEdges.sort((a, b) => {
+        const [ar, ac] = coordinates(a);
+        const [br, bc] = coordinates(b);
+        return ar - br || ac - bc;
+      })) {
+        const previous = runs.at(-1)?.at(-1);
+        const [row, col] = coordinates(key);
+        if (previous && coordinates(previous)[0] === row && coordinates(previous)[1] === col - 1) runs.at(-1)!.push(key as Cell);
+        else runs.push([key as Cell]);
+      }
+      const run = runs.sort((a, b) => b.length - a.length || coordinates(a[0])[0] - coordinates(b[0])[0])[0];
+      if (!run) continue;
+      const midpoint = (run.length - 1) / 2;
+      const best = [...run].sort((a, b) => {
+        const aDistance = Math.abs(run.indexOf(a) - midpoint);
+        const bDistance = Math.abs(run.indexOf(b) - midpoint);
+        const aCovered = puzzle.objects.some((object) => objectCells(puzzle, object).includes(a)) ? 1 : 0;
+        const bCovered = puzzle.objects.some((object) => objectCells(puzzle, object).includes(b)) ? 1 : 0;
+        return aDistance - bDistance || aCovered - bCovered;
+      })[0];
+      anchors.add(best);
+    }
+    return anchors;
+  }, [puzzle]);
+  const floorObjectsByCell = useMemo(() => new Map(puzzle.objects.filter((object) => !object.side).flatMap((object) => objectCells(puzzle, object).map((key) => [key, object] as const))), [puzzle]);
   const wallObjectsByCell = useMemo(() => {
     const byCell = new Map<string, Puzzle['objects']>();
     for (const object of puzzle.objects.filter((item) => item.side)) {
@@ -171,7 +199,7 @@ export default function App() {
       const kind = kindById.get(selectedKind);
       if (!kind) return;
       if (kind.onWall) return;
-      setPuzzle((current) => placeObject(current, selectedKind, key));
+      setPuzzle((current) => placeObject(current, selectedKind, key, undefined, bedDirection));
     }
     setNotice('');
   }
@@ -195,6 +223,7 @@ export default function App() {
 
   function continuePaintStroke(event: PointerEvent<HTMLDivElement>) {
     if (drawingPointer.current !== event.pointerId) return;
+    if (tool === 'object' && kindById.get(selectedKind)?.art === 'bed') return;
     const key = roomCellFromPoint(event);
     if (key) paintSelected(key);
   }
@@ -214,7 +243,7 @@ export default function App() {
           ...puzzle,
           playable: puzzle.playable.filter((item) => item !== key),
           rooms: puzzle.rooms.map((room) => ({ ...room, cells: room.cells.filter((item) => item !== key) })),
-          objects: puzzle.objects.filter((object) => object.cell !== key),
+          objects: puzzle.objects.filter((object) => !objectCells(puzzle, object).includes(key)),
           walls: puzzle.walls.filter((wall) => wall.from !== key && wall.to !== key),
         });
       } else {
@@ -232,7 +261,7 @@ export default function App() {
       setPuzzle((current) => assignCellToRoom(current, key, selectedRoom));
       setNotice('');
     } else if (tool === 'erase') {
-      updatePuzzle({ ...puzzle, objects: puzzle.objects.filter((object) => object.cell !== key) });
+      updatePuzzle({ ...puzzle, objects: puzzle.objects.filter((object) => !objectCells(puzzle, object).includes(key)) });
     } else if (tool === 'object') {
       if (kindById.get(selectedKind)?.onWall) return;
       paintedCells.current.clear();
@@ -319,19 +348,22 @@ export default function App() {
     if (!file) return;
     try {
       const imported = parsePuzzle(JSON.parse(await file.text()));
-      const parsed = { ...imported, id: crypto.randomUUID() };
+      const replacingCurrent = activeCaseId !== null && imported.title === puzzle.title;
+      const parsed = { ...imported, id: replacingCurrent ? activeCaseId : crypto.randomUUID() };
       const problems = validatePuzzle(parsed);
-      setCases((current) => upsertCase(current, newSavedCase(parsed)));
+      setCases((current) => upsertCase(current, replacingCurrent
+        ? { puzzle: parsed, branchWorkspace: reconcileBranches(branchWorkspace, parsed), consideredSuspectIds: consideredSuspectIds.filter((id) => parsed.suspects.some((suspect) => suspect.id === id)), lastMode: 'edit', updatedAt: new Date().toISOString() }
+        : newSavedCase(parsed)));
       setActiveCaseId(parsed.id);
       setPuzzle(parsed);
-      setBranchWorkspace(newBranchWorkspace());
-      setConsideredSuspectIds([]);
+      setBranchWorkspace(replacingCurrent ? reconcileBranches(branchWorkspace, parsed) : newBranchWorkspace());
+      setConsideredSuspectIds(replacingCurrent ? consideredSuspectIds.filter((id) => parsed.suspects.some((suspect) => suspect.id === id)) : []);
       setSelectedRoom(parsed.rooms[0]?.id ?? '');
       setSelectedKind(parsed.objectKinds[0]?.id ?? '');
       setActiveNoteCell(null);
       setMode('edit');
       setEditorTab('setup');
-      setNotice(problems.length ? `Case imported with ${problems.length} item${problems.length === 1 ? '' : 's'} to correct.` : 'Case imported.');
+      setNotice(problems.length ? `Case imported with ${problems.length} item${problems.length === 1 ? '' : 's'} to correct.` : replacingCurrent ? 'Case updated from JSON.' : 'Case imported.');
     } catch {
       setNotice('Could not read that puzzle JSON file.');
     }
@@ -431,16 +463,27 @@ export default function App() {
                   const room = roomIndex === undefined ? undefined : puzzle.rooms[roomIndex];
                   const floorObject = floorObjectsByCell.get(key);
                   const floorKind = floorObject && kindById.get(floorObject.kindId);
+                  const bedCells = floorObject && floorKind?.art === 'bed' ? objectCells(puzzle, floorObject) : [];
+                  const bedPart = bedCells.length === 2 ? (
+                    bedCells.map(coordinates).sort((a, b) => a[0] - b[0] || a[1] - b[1])[0].join(',') === key ? 'first' : 'second'
+                  ) : undefined;
+                  const bedAxis = bedCells.length === 2 && coordinates(bedCells[0])[0] !== coordinates(bedCells[1])[0] ? 'vertical' : 'horizontal';
                   const connections = floorObject && (['N', 'E', 'S', 'W'] as const).filter((side) => {
                     const adjacent = side === 'N' ? cell(row - 1, col) : side === 'S' ? cell(row + 1, col) : side === 'E' ? cell(row, col + 1) : cell(row, col - 1);
-                    return floorObjectsByCell.get(adjacent)?.kindId === floorObject.kindId;
+                    return floorObjectsByCell.get(adjacent)?.kindId === floorObject.kindId && roomByCell.get(adjacent) === roomIndex;
                   });
                   const wallObjects = wallObjectsByCell.get(key) ?? [];
                   const selected = mode === 'edit' && tool === 'room' && room?.id === selectedRoom;
                   const tileStyle = isPlayable && roomIndex !== undefined ? {
                     backgroundColor: ROOM_COLORS[roomIndex % ROOM_COLORS.length],
-                    borderTopWidth: row === 0 || roomByCell.get(cell(row - 1, col)) !== roomIndex ? 3 : 1,
-                    borderLeftWidth: col === 0 || roomByCell.get(cell(row, col - 1)) !== roomIndex ? 3 : 1,
+                    borderTopWidth: row === 0 || roomByCell.get(cell(row - 1, col)) !== roomIndex ? 4 : 1,
+                    borderLeftWidth: col === 0 || roomByCell.get(cell(row, col - 1)) !== roomIndex ? 4 : 1,
+                    borderBottomWidth: row === puzzle.rows - 1 || !playable.has(cell(row + 1, col)) ? 4 : 1,
+                    borderRightWidth: col === puzzle.cols - 1 || !playable.has(cell(row, col + 1)) ? 4 : 1,
+                    borderTopColor: row === 0 || roomByCell.get(cell(row - 1, col)) !== roomIndex ? '#242321' : '#9ba9a7',
+                    borderLeftColor: col === 0 || roomByCell.get(cell(row, col - 1)) !== roomIndex ? '#242321' : '#9ba9a7',
+                    borderBottomColor: row === puzzle.rows - 1 || !playable.has(cell(row + 1, col)) ? '#242321' : '#9ba9a7',
+                    borderRightColor: col === puzzle.cols - 1 || !playable.has(cell(row, col + 1)) ? '#242321' : '#9ba9a7',
                   } : undefined;
                   return <div
                     key={key}
@@ -456,7 +499,7 @@ export default function App() {
                   >
                     {isPlayable && <>
                       {room && roomLabelCells.has(key) && <span className="cell-room">{room.name}</span>}
-                      {floorKind && <span className={`cell-object ${floorKind.art === 'table' || floorKind.art === 'carpet' ? 'tile-cell-object' : ''}`} title={floorKind.name}><ObjectMark kind={floorKind} connections={connections} /></span>}
+                      {floorKind && <span className={`cell-object ${floorKind.art === 'table' || floorKind.art === 'carpet' || floorKind.art === 'bed' ? 'tile-cell-object' : ''}`} title={floorKind.name}><ObjectMark kind={floorKind} connections={connections} bedPart={bedPart} bedAxis={bedAxis} /></span>}
                       {wallObjects.map((object) => {
                         const wallKind = kindById.get(object.kindId);
                         return wallKind && <ObjectMark key={object.id} kind={wallKind} className={`wall-object wall-${object.side?.toLowerCase()}`} />;
@@ -564,6 +607,7 @@ export default function App() {
                 </div>)}</div>
                 <button type="button" className="text-button" onClick={addObjectKind}>+ Add custom object</button>
                 {kindById.get(selectedKind)?.onWall && <p className="hint">Highlighted wall edges are placement targets. Windows are limited to outside walls.</p>}
+                {kindById.get(selectedKind)?.art === 'bed' && <div className="bed-direction" role="group" aria-label="Bed direction"><span>Bed extends</span>{([['E', 'Right'], ['S', 'Down'], ['W', 'Left'], ['N', 'Up']] as const).map(([value, label]) => <button key={value} type="button" className={bedDirection === value ? 'selected' : ''} onClick={() => setBedDirection(value)}>{label}</button>)}</div>}
               </section>}
 
               {editorTab === 'people' && <section className="card">
