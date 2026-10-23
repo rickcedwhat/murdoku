@@ -62,7 +62,6 @@
 
 /* A bed is one two-cell object with a continuous illustration. */
 .cell.tile-board-cell{z-index:auto;border:1px solid #93a4a594}
-.cell.tile-board-cell:has(.tile-table)::after{content:"";position:absolute;inset:-1px;border:1px solid #93a4a594;pointer-events:none;z-index:9}
 .cell.bed-anchor{z-index:auto}
 .cell.bed-anchor>.cell-object{inset:-1px;z-index:6}
 .room-wall{z-index:10}
@@ -81,7 +80,7 @@
 .tile-cell-object .tile-table.joined-n{top:4px}
 .tile-cell-object .tile-table.joined-e{right:-8px}
 .tile-cell-object .tile-table.joined-s{bottom:-12px}
-.tile-cell-object .tile-table.joined-w{left:-2px}
+.tile-cell-object .tile-table.joined-w{left:-8px}
 .bed-direction{display:flex;align-items:center;flex-wrap:wrap;gap:5px;margin:7px 0 12px;color:#5b706b;font-size:11px;font-weight:750}
 .bed-direction button{border:1px solid #cbd8ce;border-radius:6px;background:#fff;color:#315747;padding:6px 8px;font-size:11px;font-weight:750}
 .bed-direction button.selected{background:#294d3d;border-color:#294d3d;color:#fff}
@@ -115,3 +114,4 @@
 .person-choices{display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin:0 0 12px;padding:10px;border:1px solid #d8c9a9;border-radius:9px;background:#fff9ec;color:#544733;font-size:11px}
 .person-choices>span:first-child{font-weight:800;margin-right:4px}.person-choices button{border:1px solid #cfbc94;border-radius:6px;background:#fff;color:#344c43;padding:6px 9px;font-size:11px;font-weight:750}.person-choices .choice-hint{color:#88765e}
 .case-card-actions,.diagram-heading-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.case-delete{border:1px solid #e4cec8;border-radius:8px;background:#fff7f5;color:#90564e;padding:9px 12px;font-size:11px;font-weight:750}.case-delete:hover{background:#fbeae6}.diagram-map-toggle{border:1px solid #cbd8ce;border-radius:8px;background:#fff;color:#315747;padding:7px 10px;font-size:11px;font-weight:750}.diagram-map-toggle[aria-pressed="true"]{background:#294d3d;border-color:#294d3d;color:#fff}.deduction-cell.confirmed{background-image:linear-gradient(#ffffff70,#ffffff70)}.deduction-mark{position:relative;z-index:2;display:grid;place-items:center;width:100%;height:100%}.confirmed-token{display:grid;place-items:center;min-width:29px;height:29px;padding:0 4px;border:2px solid #fff9ec;border-radius:9px;background:#214e40;color:#fff;font-family:system-ui,sans-serif;font-size:18px;font-weight:900;letter-spacing:0;box-shadow:0 2px 4px #1a3f3852}.diagram-map-overlay{position:absolute;inset:0;z-index:1;display:grid;place-items:center;opacity:.43;pointer-events:none;overflow:hidden}.diagram-map-overlay .object-image{width:92%;height:92%}.diagram-map-overlay .object-tile{position:absolute;inset:3px;width:auto;height:auto;border-width:2px}.diagram-map-overlay .object-tile.joined-n{top:-3px}.diagram-map-overlay .object-tile.joined-e{right:-3px}.diagram-map-overlay .object-tile.joined-s{bottom:-3px}.diagram-map-overlay .object-tile.joined-w{left:-3px}.diagram-map-overlay .tile-table::before,.diagram-map-overlay .tile-table::after{display:none}.diagram-map-overlay .wall-object{z-index:2}.deduction-cell.slash::after{z-index:3}.deduction-wall{z-index:4}
+.deduction-grid.map-view .diagram-map-overlay{opacity:1}
