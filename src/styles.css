@@ -61,7 +61,8 @@
 .tile-table.joined-w::before,.tile-table.joined-e::after,.tile-table.joined-s::before,.tile-table.joined-s::after{display:none}
 
 /* A bed is one two-cell object with a continuous illustration. */
-.cell.tile-board-cell{z-index:auto;border:1px solid transparent}
+.cell.tile-board-cell{z-index:auto;border:1px solid #93a4a594}
+.cell.tile-board-cell:has(.tile-table)::after{content:"";position:absolute;inset:-1px;border:1px solid #93a4a594;pointer-events:none;z-index:9}
 .cell.bed-anchor{z-index:auto}
 .cell.bed-anchor>.cell-object{inset:-1px;z-index:6}
 .room-wall{z-index:10}
@@ -80,7 +81,7 @@
 .tile-cell-object .tile-table.joined-n{top:4px}
 .tile-cell-object .tile-table.joined-e{right:-8px}
 .tile-cell-object .tile-table.joined-s{bottom:-12px}
-.tile-cell-object .tile-table.joined-w{left:-12px}
+.tile-cell-object .tile-table.joined-w{left:-2px}
 .bed-direction{display:flex;align-items:center;flex-wrap:wrap;gap:5px;margin:7px 0 12px;color:#5b706b;font-size:11px;font-weight:750}
 .bed-direction button{border:1px solid #cbd8ce;border-radius:6px;background:#fff;color:#315747;padding:6px 8px;font-size:11px;font-weight:750}
 .bed-direction button.selected{background:#294d3d;border-color:#294d3d;color:#fff}
