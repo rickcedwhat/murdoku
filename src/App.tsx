@@ -623,12 +623,19 @@ export default function App() {
               <div className="deduction-heading"><div><p className="eyebrow">DEDUCTION GRID</p><h2>Your notes</h2></div><span className="dimension-badge">{placements.length} confirmed</span></div>
               <div className="branch-panel" aria-label="Hypotheses">
                 <div className="branch-heading"><strong>Hypotheses</strong><span>{branchWorkspace.checkpoint ? branchWorkspace.checkpoint.name : 'Save a point to try different ideas'}</span></div>
+                {branchWorkspace.checkpoint && <div className="checkpoint-summary">
+                  <span>{branchWorkspace.checkpoint.state.placements.length} confirmed · {Object.keys(branchWorkspace.checkpoint.state.notes).length} noted cells</span>
+                  <span>{branchWorkspace.checkpoint.consideredSuspectIds ? `Checked: ${puzzle.suspects.filter((person) => branchWorkspace.checkpoint?.consideredSuspectIds?.includes(person.id)).map((person) => person.name).join(', ') || 'none'}` : 'Checked people were not saved in this older checkpoint'}</span>
+                </div>}
                 <div className="branch-list" role="group" aria-label="Choose hypothesis">{branchWorkspace.branches.map((branch) => <button key={branch.id} type="button" className={branchWorkspace.activeId === branch.id ? 'selected' : ''} aria-pressed={branchWorkspace.activeId === branch.id} onClick={() => setBranchWorkspace((current) => switchHypothesis(current, branch.id))}>{branch.name}</button>)}</div>
                 {activeBranch.id !== 'main' && <label className="branch-name">Branch name<input aria-label="Branch name" value={activeBranch.name} onChange={(event) => setBranchWorkspace((current) => renameHypothesis(current, activeBranch.id, event.target.value))} /></label>}
                 <div className="branch-actions">
-                  <button type="button" onClick={() => setBranchWorkspace(saveCheckpoint)}>Save checkpoint</button>
-                  <button type="button" onClick={() => setBranchWorkspace(createHypothesis)}>+ New hypothesis</button>
-                  {branchWorkspace.checkpoint && <button type="button" onClick={() => setBranchWorkspace(restoreCheckpoint)}>Restore checkpoint</button>}
+                  <button type="button" onClick={() => setBranchWorkspace((current) => saveCheckpoint(current, consideredSuspectIds))}>Save checkpoint</button>
+                  <button type="button" onClick={() => setBranchWorkspace((current) => createHypothesis(current, consideredSuspectIds))}>+ New hypothesis</button>
+                  {branchWorkspace.checkpoint && <button type="button" onClick={() => {
+                    setBranchWorkspace(restoreCheckpoint);
+                    if (branchWorkspace.checkpoint?.consideredSuspectIds) setConsideredSuspectIds([...branchWorkspace.checkpoint.consideredSuspectIds]);
+                  }}>Restore checkpoint</button>}
                 </div>
                 {activeBranch.id !== 'main' && <div className="branch-actions branch-outcomes"><button type="button" onClick={() => setBranchWorkspace(applyHypothesisToMain)}>Apply to Main</button><button type="button" onClick={() => setBranchWorkspace(discardHypothesis)}>Discard hypothesis</button></div>}
                 <div className="history-actions"><button type="button" disabled={!activeBranch.undo.length} onClick={() => setBranchWorkspace(undoDeduction)}>↶ Undo</button><button type="button" disabled={!activeBranch.redo.length} onClick={() => setBranchWorkspace(redoDeduction)}>↷ Redo</button><button type="button" onClick={() => setBranchWorkspace((current) => changeDeduction(current, () => ({ placements: [], notes: {} })))}>Reset notes</button></div>

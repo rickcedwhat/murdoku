@@ -26,6 +26,20 @@ describe('hypothesis branches', () => {
     expect(activeHypothesis(workspace).present.notes[cell(0, 2)]).toBeUndefined();
   });
 
+  it('keeps checked people with the checkpoint across reloads and removes deleted people', () => {
+    const puzzle = newPuzzle();
+    const firstId = puzzle.suspects[0].id;
+    const secondId = puzzle.suspects[1].id;
+    let workspace = changeDeduction(newBranchWorkspace(), mark(cell(0, 0), firstId));
+    workspace = saveCheckpoint(workspace, [firstId, secondId]);
+    expect(workspace.checkpoint?.state.notes[cell(0, 0)]).toBeDefined();
+    expect(workspace.checkpoint?.consideredSuspectIds).toEqual([firstId, secondId]);
+    workspace = parseBranchWorkspace(JSON.parse(JSON.stringify(workspace)), puzzle, { placements: [], notes: {} });
+    expect(workspace.checkpoint?.consideredSuspectIds).toEqual([firstId, secondId]);
+    puzzle.suspects = puzzle.suspects.filter((person) => person.id !== secondId);
+    expect(reconcileBranches(workspace, puzzle).checkpoint?.consideredSuspectIds).toEqual([firstId]);
+  });
+
   it('undoes and redoes within a branch, then discards it without changing Main', () => {
     const puzzle = newPuzzle();
     let workspace = newBranchWorkspace({ placements: [{ suspectId: puzzle.suspects[0].id, cell: cell(0, 0) }], notes: {} });
