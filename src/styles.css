@@ -120,4 +120,17 @@
 .deduction-grid.map-view .map-bed-anchor .object-bed-full{z-index:1}
 .confirmed-token.victim-token{background:#a93f47;box-shadow:0 2px 5px #67262d66}
 .confirmed-token.murderer-token{background:#ad7723;color:#fffaf0;box-shadow:0 2px 5px #6d471b66}
-.diagram-map-overlay.table-inner-corner-se::after{content:"";position:absolute;z-index:3;left:calc(100% - 4px);top:calc(100% - 4px);width:7px;height:7px;border-left:2px solid #544552;border-bottom:2px solid #544552;pointer-events:none}
+.deduction-grid.map-view .diagram-map-overlay .object-tile.joined-n{top:-8px}
+.deduction-grid.map-view .diagram-map-overlay .object-tile.joined-e{right:-8px}
+.deduction-grid.map-view .diagram-map-overlay .object-tile.joined-s{bottom:-8px}
+.deduction-grid.map-view .diagram-map-overlay .object-tile.joined-w{left:-8px}
+.deduction-grid.map-view .deduction-cell.table-corner{z-index:2}
+.table-corner-join{position:absolute;z-index:5;left:-6px;top:-8px;width:12px;height:12px;border-left:2px solid #544552;border-bottom:2px solid #544552;background:#baa5c2;pointer-events:none}
+.history-graph{display:flex;flex-direction:column;gap:0;max-height:300px;overflow:auto;margin-top:11px;padding:4px 6px;border:1px solid #dce7dd;border-radius:8px;background:#fff}
+.history-row{display:flex;align-items:stretch;min-height:39px;gap:10px}
+.history-rail{position:relative;flex:none;width:17px;border-left:2px solid #a9beb2;margin-left:7px}
+.history-rail::after{content:"";position:absolute;left:-6px;top:13px;width:10px;height:10px;border:2px solid #527365;border-radius:50%;background:#fff}
+.history-rail.confirmed::after{background:#386752}.history-rail.checkpoint::after{background:#d59c4d;border-color:#a36b2b}.history-rail.branch::after{background:#dde9e0;border-color:#527365}.history-rail.start::after{background:#294d3d;border-color:#294d3d}
+.history-row button{flex:1;display:flex;align-items:baseline;justify-content:space-between;gap:10px;min-width:0;border:0;border-radius:5px;background:transparent;color:#314b40;text-align:left;padding:9px 8px;cursor:pointer}
+.history-row button:hover,.history-row.viewing button{background:#e7f1e9}.history-row.current button{font-weight:800}.history-row strong{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.history-row small{font-size:10px;color:#7c8e80;white-space:nowrap}
+.history-preview{margin:9px 3px 2px;color:#52685d;font-size:11px;font-weight:650}.checkpoint-actions{display:flex;gap:7px;margin-top:10px}.checkpoint-actions input{min-width:0;flex:1;border:1px solid #cbd8ce;border-radius:7px;background:#fff;padding:7px 9px;color:#315747;font-size:11px}.checkpoint-actions button{border:1px solid #cbd8ce;border-radius:7px;background:#fff;padding:7px 9px;color:#315747;font-size:11px;font-weight:700}.checkpoint-actions button:hover{background:#eaf1ea}

@@ -5,15 +5,32 @@ import { cell, newPuzzle, placeObject } from './puzzle';
 describe('hypothesis branches', () => {
   const mark = (at: string, suspectId: string) => (state: ReturnType<typeof activeHypothesis>['present']) => ({ ...state, notes: { ...state.notes, [at]: { type: 'candidates' as const, suspectIds: [suspectId] } } });
 
+  it('records named checkpoints and confirmed people as points that can be branched from', () => {
+    const puzzle = newPuzzle();
+    const personId = puzzle.suspects[0].id;
+    let workspace = newBranchWorkspace();
+    workspace = changeDeduction(workspace, mark(cell(0, 0), personId));
+    workspace = saveCheckpoint(workspace, [], 'First theory');
+    const checkpoint = workspace.points?.at(-1);
+    expect(workspace.points?.map((point) => point.kind)).toEqual(['start', 'checkpoint']);
+    workspace = changeDeduction(workspace, (state) => ({ ...state, placements: [{ suspectId: personId, cell: cell(0, 1) }] }));
+    expect(workspace.points?.at(-1)).toMatchObject({ kind: 'confirmed', suspectId: personId, parentId: checkpoint?.id });
+    workspace = createHypothesis(workspace, [], checkpoint?.id);
+    expect(activeHypothesis(workspace).present.placements).toEqual([]);
+    expect(workspace.points?.at(-1)).toMatchObject({ kind: 'branch', parentId: checkpoint?.id });
+    expect(parseBranchWorkspace(JSON.parse(JSON.stringify(workspace)), puzzle, { placements: [], notes: {} }).points).toHaveLength(4);
+  });
+
   it('starts sibling hypotheses from the saved checkpoint and keeps their notes separate', () => {
     const puzzle = newPuzzle();
     let workspace = newBranchWorkspace();
     workspace = changeDeduction(workspace, mark(cell(0, 0), puzzle.suspects[0].id));
     workspace = saveCheckpoint(workspace);
-    workspace = createHypothesis(workspace);
+    const checkpointId = workspace.points?.find((point) => point.kind === 'checkpoint')?.id;
+    workspace = createHypothesis(workspace, [], checkpointId);
     const firstId = workspace.activeId;
     workspace = changeDeduction(workspace, mark(cell(0, 1), puzzle.suspects[1].id));
-    workspace = createHypothesis(workspace);
+    workspace = createHypothesis(workspace, [], checkpointId);
     expect(activeHypothesis(workspace).present.notes[cell(0, 1)]).toBeUndefined();
     workspace = changeDeduction(workspace, mark(cell(0, 2), puzzle.suspects[2].id));
     const secondId = workspace.activeId;
