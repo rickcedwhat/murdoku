@@ -56,6 +56,54 @@ describe('hypothesis branches', () => {
     expect(restored.points?.at(-1)?.state.placements[0].cell).toBe(cell(0, 1));
   });
 
+  it('keeps an undone confirmation as the branch head after reload', () => {
+    const puzzle = newPuzzle();
+    const personId = puzzle.suspects[0].id;
+    let workspace = newBranchWorkspace();
+    workspace = changeDeduction(workspace, (state) => ({ ...state, placements: [{ suspectId: personId, cell: cell(0, 0) }] }));
+    const originalHead = activeHypothesis(workspace).headPointId;
+    workspace = changeDeduction(workspace, (state) => ({ ...state, placements: [{ suspectId: personId, cell: cell(0, 1) }] }));
+    workspace = undoDeduction(workspace);
+    const restored = parseBranchWorkspace(JSON.parse(JSON.stringify(workspace)), puzzle, { placements: [], notes: {} });
+    expect(activeHypothesis(restored).headPointId).toBe(originalHead);
+    expect(restored.points?.find((point) => point.id === originalHead)?.state.placements[0].cell).toBe(cell(0, 0));
+    expect(activeHypothesis(restored).present.placements[0].cell).toBe(cell(0, 0));
+  });
+
+  it('keeps a child branch connected when its parent branch is discarded', () => {
+    const puzzle = newPuzzle();
+    let workspace = createHypothesis(newBranchWorkspace());
+    const parentBranchId = workspace.activeId;
+    workspace = changeDeduction(workspace, (state) => ({ ...state, placements: [{ suspectId: puzzle.suspects[0].id, cell: cell(0, 0) }] }));
+    const sharedPointId = activeHypothesis(workspace).headPointId;
+    workspace = createHypothesis(workspace, [], sharedPointId);
+    const childBranchId = workspace.activeId;
+    const childForkId = activeHypothesis(workspace).headPointId;
+    workspace = switchHypothesis(workspace, parentBranchId);
+    workspace = changeDeduction(workspace, (state) => ({ ...state, placements: [...state.placements, { suspectId: puzzle.suspects[1].id, cell: cell(0, 1) }] }));
+    const parentOnlyPointId = activeHypothesis(workspace).headPointId;
+    workspace = discardHypothesis(workspace);
+    expect(workspace.branches.some((branch) => branch.id === parentBranchId)).toBe(false);
+    expect(workspace.branches.some((branch) => branch.id === childBranchId)).toBe(true);
+    expect(workspace.points?.find((point) => point.id === childForkId)?.parentId).toBe(sharedPointId);
+    expect(workspace.points?.some((point) => point.id === sharedPointId)).toBe(true);
+    expect(workspace.points?.some((point) => point.id === parentOnlyPointId)).toBe(false);
+  });
+
+  it('does not recreate inherited confirmations when migrating a legacy fork', () => {
+    const puzzle = newPuzzle();
+    const inheritedId = puzzle.suspects[0].id;
+    const addedId = puzzle.suspects[1].id;
+    let workspace = newBranchWorkspace({ placements: [{ suspectId: inheritedId, cell: cell(0, 0) }], notes: {} });
+    workspace = createHypothesis(workspace);
+    workspace = changeDeduction(workspace, (state) => ({ ...state, placements: [...state.placements, { suspectId: addedId, cell: cell(0, 1) }] }));
+    const legacy = { ...workspace, points: undefined, branches: workspace.branches.map(({ headPointId: _headPointId, ...branch }) => branch) };
+    const restored = parseBranchWorkspace(JSON.parse(JSON.stringify(legacy)), puzzle, { placements: [], notes: {} });
+    const confirmed = restored.points?.filter((point) => point.kind === 'confirmed');
+    expect(confirmed?.map((point) => point.suspectId)).toEqual([inheritedId, addedId]);
+    expect(restored.points?.find((point) => point.kind === 'branch')?.state.placements.map((item) => item.suspectId)).toEqual([inheritedId]);
+  });
+
   it('starts sibling hypotheses from the saved checkpoint and keeps their notes separate', () => {
     const puzzle = newPuzzle();
     let workspace = newBranchWorkspace();

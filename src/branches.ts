@@ -126,7 +126,7 @@ export function applyHypothesisToMain(workspace: BranchWorkspace): BranchWorkspa
 
 export function discardHypothesis(workspace: BranchWorkspace): BranchWorkspace {
   if (workspace.activeId === 'main') return workspace;
-  return { ...workspace, branches: workspace.branches.filter((branch) => branch.id !== workspace.activeId), points: workspace.points?.filter((point) => point.branchId !== workspace.activeId), activeId: 'main' };
+  return pruneUnreachablePoints({ ...workspace, branches: workspace.branches.filter((branch) => branch.id !== workspace.activeId), activeId: 'main' });
 }
 
 function pruneDeduction(state: Deduction, puzzle: Puzzle): Deduction {
@@ -170,7 +170,7 @@ function migrateHistory(workspace: BranchWorkspace): BranchWorkspace {
       parentId = fork.id;
     }
     const states = [...branch.undo, branch.present];
-    let previous = start.state;
+    let previous = branch.id === 'main' ? start.state : copyDeduction(branch.undo[0] ?? branch.present);
     for (const state of states) {
       const added = state.placements.filter((item) => !previous.placements.some((old) => old.suspectId === item.suspectId && old.cell === item.cell));
       for (const placement of added) {
@@ -201,6 +201,7 @@ function compactReplayPoints(workspace: BranchWorkspace): BranchWorkspace {
     const parent = points[parentIndex];
     if (point.kind !== 'confirmed' || parent?.kind !== 'confirmed' || point.branchId !== parent.branchId || point.suspectId !== parent.suspectId) continue;
     if (points.some((item) => item.id !== point.id && item.parentId === parent.id)) continue;
+    if (workspace.branches.some((branch) => branch.headPointId === parent.id)) continue;
     point.parentId = parent.parentId;
     removed.set(parent.id, point.id);
     points.splice(parentIndex, 1);
