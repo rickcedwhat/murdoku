@@ -356,12 +356,12 @@
     },
     {
       "id": "object-15",
-      "kindId": "carpet",
+      "kindId": "table",
       "cell": "3,7"
     },
     {
       "id": "object-16",
-      "kindId": "carpet",
+      "kindId": "table",
       "cell": "3,8"
     },
     {
@@ -467,11 +467,6 @@
       "id": "object-36",
       "kindId": "table",
       "cell": "6,7"
-    },
-    {
-      "id": "object-37",
-      "kindId": "table",
-      "cell": "6,8"
     },
     {
       "id": "object-38",

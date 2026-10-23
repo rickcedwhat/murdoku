@@ -106,3 +106,18 @@ export function fillLineWithXs(workspace: BranchWorkspace, puzzle: Puzzle, confi
     return state;
   });
 }
+
+export function removeConfirmedCandidate(workspace: BranchWorkspace, suspectId: string, confirmedCell: Cell): BranchWorkspace {
+  const deduction = workspace.branches.find((branch) => branch.id === workspace.activeId)?.present;
+  if (!deduction?.placements.some((item) => item.suspectId === suspectId && item.cell === confirmedCell)) return workspace;
+  if (!Object.entries(deduction.notes).some(([key, note]) => key !== confirmedCell && note.type === 'candidates' && note.suspectIds.includes(suspectId))) return workspace;
+  return changeDeduction(workspace, (state) => {
+    for (const [key, note] of Object.entries(state.notes)) {
+      if (key === confirmedCell || note.type !== 'candidates') continue;
+      const suspectIds = note.suspectIds.filter((id) => id !== suspectId);
+      if (suspectIds.length) state.notes[key] = { type: 'candidates', suspectIds };
+      else delete state.notes[key];
+    }
+    return state;
+  });
+}

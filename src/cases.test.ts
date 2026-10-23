@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { activeHypothesis, changeDeduction, newBranchWorkspace, undoDeduction } from './branches';
-import { fillLineWithXs, importTargetsActiveCase, newSavedCase, parseCaseLibrary, upsertCase } from './cases';
+import { fillLineWithXs, importTargetsActiveCase, newSavedCase, parseCaseLibrary, removeConfirmedCandidate, upsertCase } from './cases';
 import { cell, newPuzzle, placeObject } from './puzzle';
 
 describe('case library', () => {
@@ -49,6 +49,26 @@ describe('case library', () => {
     expect(after.notes[cell(0, 4)]).toEqual({ type: 'empty' });
     expect(after.notes[cell(0, 5)]).toEqual({ type: 'blocked' });
     expect(after.notes[cell(1, 0)]).toBeUndefined();
+    expect(activeHypothesis(undoDeduction(workspace)).present).toEqual(before);
+  });
+
+  it('clears a confirmed person from other pencil cells in one undo step', () => {
+    const puzzle = newPuzzle();
+    const [person, other] = puzzle.suspects;
+    let workspace = changeDeduction(newBranchWorkspace(), (state) => ({ ...state,
+      placements: [{ suspectId: person.id, cell: cell(0, 0) }],
+      notes: {
+        [cell(0, 1)]: { type: 'candidates', suspectIds: [person.id, other.id] },
+        [cell(0, 2)]: { type: 'candidates', suspectIds: [person.id] },
+        [cell(0, 3)]: { type: 'empty' },
+      },
+    }));
+    const before = activeHypothesis(workspace).present;
+    workspace = removeConfirmedCandidate(workspace, person.id, cell(0, 0));
+    expect(activeHypothesis(workspace).present.notes).toEqual({
+      [cell(0, 1)]: { type: 'candidates', suspectIds: [other.id] },
+      [cell(0, 3)]: { type: 'empty' },
+    });
     expect(activeHypothesis(undoDeduction(workspace)).present).toEqual(before);
   });
 });
