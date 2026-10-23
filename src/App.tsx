@@ -184,7 +184,7 @@ export default function App() {
   const { placements, notes } = activeBranch.present;
   const placementsByCell = useMemo(() => new Map(placements.map((placement) => [placement.cell, placement])), [placements]);
   const selectedPlacement = placements.find((placement) => placement.cell === activeNoteCell);
-  const showMapNotes = mode === 'play' && (overlayPinned || overlayHeld);
+  const showDiagramMap = mode === 'play' && (overlayPinned || overlayHeld);
   const deductionCellSize = Math.max(42, Math.ceil(Math.sqrt(puzzle.suspects.length)) * 14);
   const setupProblems = validatePuzzle(puzzle);
   const playProblems = validatePlacements(puzzle, placements);
@@ -251,6 +251,15 @@ export default function App() {
     }));
   }
 
+  function clearDeductionCell(key: Cell) {
+    if (!playable.has(key)) return;
+    setBranchWorkspace((current) => changeDeduction(current, (state) => {
+      state.placements = state.placements.filter((item) => item.cell !== key);
+      delete state.notes[key];
+      return state;
+    }));
+  }
+
   function updatePuzzle(next: Puzzle) {
     setPuzzle(next);
     setConsideredSuspectIds((current) => current.filter((id) => next.suspects.some((person) => person.id === id)));
@@ -309,6 +318,10 @@ export default function App() {
     } else if (personChoices?.cell === key && /^[1-9]$/.test(event.key) && personChoices.ids[Number(event.key) - 1]) {
       event.preventDefault();
       choosePerson(key, personChoices.ids[Number(event.key) - 1], personChoices.confirmed);
+    } else if (!event.repeat && (event.key === 'Backspace' || event.key === 'Delete')) {
+      event.preventDefault();
+      setPersonChoices(null);
+      clearDeductionCell(key);
     } else if (!event.repeat && event.key.toLowerCase() === 'x') {
       event.preventDefault();
       setPersonChoices(null);
@@ -586,7 +599,7 @@ export default function App() {
           <section className="board-panel" aria-label="Puzzle board">
             <div className="panel-heading">
               <div><p className="eyebrow">CASE MAP</p><h2>{puzzle.title}</h2></div>
-              <div className="map-heading-actions">{mode === 'play' && <button type="button" className="map-notes-toggle" aria-pressed={overlayPinned} onClick={() => setOverlayPinned((current) => !current)}>{overlayPinned ? 'Hide notes' : 'Show notes'}</button>}<span className="dimension-badge">{puzzle.rows} × {puzzle.cols}</span></div>
+              <span className="dimension-badge">{puzzle.rows} × {puzzle.cols}</span>
             </div>
             {mode === 'edit' && <div className="tool-row" role="group" aria-label="Map tool">
               {([
@@ -655,14 +668,6 @@ export default function App() {
                         const wallKind = kindById.get(object.kindId);
                         return wallKind && <ObjectMark key={object.id} kind={wallKind} className={`wall-object wall-${object.side?.toLowerCase()}`} />;
                       })}
-                      {showMapNotes && (() => {
-                        const note = notes[key];
-                        const placement = placementsByCell.get(key);
-                        const fixedBlocked = !!floorObject && !floorKind?.canOccupy;
-                        const candidateIds = note?.type === 'candidates' ? note.suspectIds : [];
-                        const mark = fixedBlocked ? '' : placement ? suspectLetter(placement.suspectId) : note?.type === 'empty' || note?.type === 'blocked' ? 'X' : candidateIds.length ? <span className="candidate-grid" style={{ gridTemplateColumns: `repeat(${Math.max(3, Math.ceil(Math.sqrt(puzzle.suspects.length)))}, 1fr)` }}>{Array.from({ length: Math.max(9, puzzle.suspects.length) }, (_, slot) => <span className="candidate-slot" key={slot}>{puzzle.suspects[slot] && candidateIds.includes(puzzle.suspects[slot].id) ? suspectLetter(puzzle.suspects[slot].id).toLowerCase() : ''}</span>)}</span> : '';
-                        return <span className={`map-note-overlay ${fixedBlocked ? 'blocked' : ''} ${placement ? 'confirmed' : ''} ${candidateIds.length ? 'candidates' : ''}`} aria-hidden="true">{mark}</span>;
-                      })()}
                       {mode === 'edit' && (tool === 'erase' || (tool === 'object' && kindById.get(selectedKind)?.onWall)) && (['N', 'E', 'S', 'W'] as const).map((side) => {
                         const existing = wallObjects.find((object) => object.side === side);
                         const kind = kindById.get(selectedKind);
@@ -681,10 +686,10 @@ export default function App() {
             </div>
             <div className="board-footer">
               <span>{puzzle.playable.length} playable cells · {puzzle.rooms.length} rooms</span>
-              <span>{mode === 'edit' ? (tool === 'object' && kindById.get(selectedKind)?.onWall ? 'Click a highlighted wall edge' : tool === 'room' || tool === 'object' ? 'Tap or drag to paint' : 'Tap cells to apply the selected tool') : 'Hold Shift to peek at notes'}</span>
+              <span>{mode === 'edit' ? (tool === 'object' && kindById.get(selectedKind)?.onWall ? 'Click a highlighted wall edge' : tool === 'room' || tool === 'object' ? 'Tap or drag to paint' : 'Tap cells to apply the selected tool') : 'Illustrated reference map'}</span>
             </div>
             {mode === 'play' && <section className="deduction-panel" aria-label="Deduction grid">
-              <div className="deduction-heading"><div><p className="eyebrow">DEDUCTION GRID</p><h2>Your notes</h2></div><span className="dimension-badge">{placements.length} confirmed</span></div>
+              <div className="deduction-heading"><div><p className="eyebrow">DEDUCTION GRID</p><h2>Your notes</h2></div><div className="diagram-heading-actions"><button type="button" className="diagram-map-toggle" aria-pressed={overlayPinned} onClick={() => setOverlayPinned((current) => !current)}>{overlayPinned ? 'Hide map' : 'Show map'}</button><span className="dimension-badge">{placements.length} confirmed</span></div></div>
               <div className="branch-panel" aria-label="Hypotheses">
                 <div className="branch-heading"><strong>Hypotheses</strong><span>{branchWorkspace.checkpoint ? branchWorkspace.checkpoint.name : 'Save a point to try different ideas'}</span></div>
                 {branchWorkspace.checkpoint && <div className="checkpoint-summary">
@@ -704,7 +709,7 @@ export default function App() {
                 {activeBranch.id !== 'main' && <div className="branch-actions branch-outcomes"><button type="button" onClick={() => setBranchWorkspace(applyHypothesisToMain)}>Apply to Main</button><button type="button" onClick={() => setBranchWorkspace(discardHypothesis)}>Discard hypothesis</button></div>}
                 <div className="history-actions"><button type="button" disabled={!activeBranch.undo.length} onClick={() => setBranchWorkspace(undoDeduction)}>↶ Undo</button><button type="button" disabled={!activeBranch.redo.length} onClick={() => setBranchWorkspace(redoDeduction)}>↷ Redo</button><button type="button" onClick={() => setBranchWorkspace((current) => changeDeduction(current, () => ({ placements: [], notes: {} })))}>Reset notes</button></div>
               </div>
-              <p className="hint">Click a cell, then type a lowercase initial to pencil a person or uppercase to confirm them. Press X to mark it empty. Use arrow keys to move between cells.</p>
+              <p className="hint">Click a cell, then type a lowercase initial to pencil a person or uppercase to confirm them. Press X to mark it empty, Backspace to clear it, or hold Shift to peek at the map. Use arrow keys to move between cells.</p>
               <div className="note-tools" role="group" aria-label="Deduction mark">
                 <button type="button" className={noteTool === 'erase' ? 'selected' : ''} onClick={() => {
                   setNoteTool((current) => current === 'erase' ? null : 'erase');
@@ -730,13 +735,23 @@ export default function App() {
                   right: col === puzzle.cols - 1 || !playable.has(cell(row, col + 1)),
                 } : null;
                 const floor = floorObjectsByCell.get(key);
+                const floorKind = floor && kindById.get(floor.kindId);
+                const connections = floor && (['N', 'E', 'S', 'W'] as const).filter((side) => {
+                  const adjacent = side === 'N' ? cell(row - 1, col) : side === 'S' ? cell(row + 1, col) : side === 'E' ? cell(row, col + 1) : cell(row, col - 1);
+                  return floorObjectsByCell.get(adjacent)?.kindId === floor.kindId && roomByCell.get(adjacent) === roomIndex;
+                });
+                const wallObjects = wallObjectsByCell.get(key) ?? [];
                 const fixedBlocked = !!floor && !kindById.get(floor.kindId)?.canOccupy;
                 const note = notes[key];
                 const placement = placementsByCell.get(key);
                 const confirmed = puzzle.suspects.find((suspect) => suspect.id === placement?.suspectId);
                 const candidateIds = note?.type === 'candidates' ? note.suspectIds : [];
-                const mark = fixedBlocked ? '' : note?.type === 'empty' || note?.type === 'blocked' ? 'X' : confirmed ? suspectLetter(confirmed.id) : candidateIds.length ? <span className="candidate-grid" style={{ gridTemplateColumns: `repeat(${Math.max(3, Math.ceil(Math.sqrt(puzzle.suspects.length)))}, 1fr)` }}>{Array.from({ length: Math.max(9, puzzle.suspects.length) }, (_, slot) => <span className="candidate-slot" key={slot}>{puzzle.suspects[slot] && candidateIds.includes(puzzle.suspects[slot].id) ? suspectLetter(puzzle.suspects[slot].id).toLowerCase() : ''}</span>)}</span> : '';
-                return <button key={key} id={`deduction-${key}`} type="button" className={`deduction-cell ${!isPlayable ? 'outside' : ''} ${fixedBlocked ? 'slash' : ''} ${confirmed ? 'confirmed' : ''} ${candidateIds.length ? 'candidates' : ''} ${activeNoteCell === key ? 'active' : ''}`} style={isPlayable && roomIndex !== undefined ? { backgroundColor: ROOM_COLORS[roomIndex % ROOM_COLORS.length], width: deductionCellSize, height: deductionCellSize } : { width: deductionCellSize, height: deductionCellSize }} disabled={!isPlayable || fixedBlocked} aria-pressed={activeNoteCell === key} onFocus={() => { setActiveNoteCell(key); if (personChoices?.cell !== key) setPersonChoices(null); }} onClick={() => { setActiveNoteCell(key); if (noteTool) markCell(key); }} onKeyDown={(event) => handleNoteKeyDown(event, key)} aria-label={`Row ${row + 1}, column ${col + 1}: ${!isPlayable ? 'outside map' : fixedBlocked ? 'blocked by furniture' : confirmed ? `confirmed ${confirmed.name}` : note?.type === 'candidates' ? `possible ${note.suspectIds.map((id) => puzzle.suspects.find((suspect) => suspect.id === id)?.name).join(', ')}` : note?.type === 'empty' || note?.type === 'blocked' ? 'empty' : 'unmarked'}`}>{mark}{diagramWalls?.top && <span className="deduction-wall deduction-wall-top" aria-hidden="true" />}{diagramWalls?.left && <span className="deduction-wall deduction-wall-left" aria-hidden="true" />}{diagramWalls?.bottom && <span className="deduction-wall deduction-wall-bottom" aria-hidden="true" />}{diagramWalls?.right && <span className="deduction-wall deduction-wall-right" aria-hidden="true" />}</button>;
+                const mark = fixedBlocked ? '' : note?.type === 'empty' || note?.type === 'blocked' ? 'X' : confirmed ? <span className="confirmed-token">{suspectLetter(confirmed.id)}</span> : candidateIds.length ? <span className="candidate-grid" style={{ gridTemplateColumns: `repeat(${Math.max(3, Math.ceil(Math.sqrt(puzzle.suspects.length)))}, 1fr)` }}>{Array.from({ length: Math.max(9, puzzle.suspects.length) }, (_, slot) => <span className="candidate-slot" key={slot}>{puzzle.suspects[slot] && candidateIds.includes(puzzle.suspects[slot].id) ? suspectLetter(puzzle.suspects[slot].id).toLowerCase() : ''}</span>)}</span> : '';
+                return <button key={key} id={`deduction-${key}`} type="button" className={`deduction-cell ${!isPlayable ? 'outside' : ''} ${fixedBlocked ? 'slash' : ''} ${confirmed ? 'confirmed' : ''} ${candidateIds.length ? 'candidates' : ''} ${activeNoteCell === key ? 'active' : ''}`} style={isPlayable && roomIndex !== undefined ? { backgroundColor: ROOM_COLORS[roomIndex % ROOM_COLORS.length], width: deductionCellSize, height: deductionCellSize } : { width: deductionCellSize, height: deductionCellSize }} disabled={!isPlayable || fixedBlocked} aria-pressed={activeNoteCell === key} onFocus={() => { setActiveNoteCell(key); if (personChoices?.cell !== key) setPersonChoices(null); }} onClick={() => { setActiveNoteCell(key); if (noteTool) markCell(key); }} onKeyDown={(event) => handleNoteKeyDown(event, key)} aria-label={`Row ${row + 1}, column ${col + 1}: ${!isPlayable ? 'outside map' : fixedBlocked ? 'blocked by furniture' : confirmed ? `confirmed ${confirmed.name}` : note?.type === 'candidates' ? `possible ${note.suspectIds.map((id) => puzzle.suspects.find((suspect) => suspect.id === id)?.name).join(', ')}` : note?.type === 'empty' || note?.type === 'blocked' ? 'empty' : 'unmarked'}`}>
+                  {showDiagramMap && isPlayable && <span className="diagram-map-overlay" aria-hidden="true">{floorKind && <ObjectMark kind={floorKind} connections={connections} />}{wallObjects.map((object) => { const kind = kindById.get(object.kindId); return kind && <ObjectMark key={object.id} kind={kind} className={`wall-object wall-${object.side?.toLowerCase()}`} />; })}</span>}
+                  <span className="deduction-mark">{mark}</span>
+                  {diagramWalls?.top && <span className="deduction-wall deduction-wall-top" aria-hidden="true" />}{diagramWalls?.left && <span className="deduction-wall deduction-wall-left" aria-hidden="true" />}{diagramWalls?.bottom && <span className="deduction-wall deduction-wall-bottom" aria-hidden="true" />}{diagramWalls?.right && <span className="deduction-wall deduction-wall-right" aria-hidden="true" />}
+                </button>;
               })}</div></div><label className="scratchpad">Scratch notes<textarea aria-label="Scratch notes" placeholder="Jot down ideas, room possibilities, or anything else…" value={scratchNotes} onChange={(event) => setScratchNotes(event.target.value)} /></label></div>
             </section>}
           </section>
