@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" aria-label="Desk">
+  <g stroke="#4b414d" stroke-width="3" stroke-linejoin="round">
+    <path d="M12 29h76v48H12z" fill="#846d87"/>
+    <path d="M17 34h66v36H17z" fill="#b5a0ba"/>
+    <path d="M20 39h60v25H20z" fill="#cec1cf" stroke-width="1.5"/>
+    <path d="M22 70v10m56-10v10" stroke-width="5" stroke-linecap="round"/>
+  </g>
+</svg>

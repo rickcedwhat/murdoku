@@ -1,0 +1,532 @@
+{
+  "version": 2,
+  "appearanceVersion": 4,
+  "id": "book-70-a-crowded-house",
+  "title": "70. A Crowded House",
+  "rows": 9,
+  "cols": 9,
+  "playable": [
+    "0,0",
+    "0,1",
+    "0,2",
+    "0,3",
+    "0,4",
+    "0,5",
+    "0,6",
+    "0,7",
+    "0,8",
+    "1,0",
+    "1,1",
+    "1,2",
+    "1,3",
+    "1,4",
+    "1,5",
+    "1,6",
+    "1,7",
+    "1,8",
+    "2,0",
+    "2,1",
+    "2,2",
+    "2,3",
+    "2,4",
+    "2,5",
+    "2,6",
+    "2,7",
+    "2,8",
+    "3,0",
+    "3,1",
+    "3,2",
+    "3,3",
+    "3,4",
+    "3,5",
+    "3,6",
+    "3,7",
+    "3,8",
+    "4,0",
+    "4,1",
+    "4,2",
+    "4,3",
+    "4,4",
+    "4,5",
+    "4,6",
+    "4,7",
+    "4,8",
+    "5,0",
+    "5,1",
+    "5,2",
+    "5,3",
+    "5,4",
+    "5,5",
+    "5,6",
+    "5,7",
+    "5,8",
+    "6,0",
+    "6,1",
+    "6,2",
+    "6,3",
+    "6,4",
+    "6,5",
+    "6,6",
+    "6,7",
+    "6,8",
+    "7,0",
+    "7,1",
+    "7,2",
+    "7,3",
+    "7,4",
+    "7,5",
+    "7,6",
+    "7,7",
+    "7,8",
+    "8,0",
+    "8,1",
+    "8,2",
+    "8,3",
+    "8,4",
+    "8,5",
+    "8,6",
+    "8,7",
+    "8,8"
+  ],
+  "rooms": [
+    {
+      "id": "bathroom",
+      "name": "Bathroom",
+      "cells": [
+        "0,0",
+        "0,1",
+        "1,0",
+        "1,1",
+        "2,0",
+        "2,1"
+      ]
+    },
+    {
+      "id": "guest-room",
+      "name": "Guest Room",
+      "cells": [
+        "0,2",
+        "0,3",
+        "0,4",
+        "1,2",
+        "1,3",
+        "1,4",
+        "2,2",
+        "2,3",
+        "2,4"
+      ]
+    },
+    {
+      "id": "living-room",
+      "name": "Living Room",
+      "cells": [
+        "0,5",
+        "0,6",
+        "0,7",
+        "0,8",
+        "1,5",
+        "1,6",
+        "1,7",
+        "1,8",
+        "2,5",
+        "2,6",
+        "2,7",
+        "2,8",
+        "3,5",
+        "3,6",
+        "3,7",
+        "3,8"
+      ]
+    },
+    {
+      "id": "kitchen",
+      "name": "Kitchen",
+      "cells": [
+        "3,0",
+        "3,1",
+        "4,0",
+        "4,1",
+        "5,0",
+        "5,1"
+      ]
+    },
+    {
+      "id": "dining-room",
+      "name": "Dining Room",
+      "cells": [
+        "3,2",
+        "3,3",
+        "3,4",
+        "4,2",
+        "4,3",
+        "4,4",
+        "5,2",
+        "5,3",
+        "5,4",
+        "6,2",
+        "6,3",
+        "6,4"
+      ]
+    },
+    {
+      "id": "study",
+      "name": "Study",
+      "cells": [
+        "4,5",
+        "4,6",
+        "4,7",
+        "4,8",
+        "5,6",
+        "5,7",
+        "5,8"
+      ]
+    },
+    {
+      "id": "basement",
+      "name": "Basement",
+      "cells": [
+        "6,0",
+        "6,1",
+        "7,0",
+        "7,1",
+        "7,2",
+        "7,3",
+        "7,4",
+        "8,0",
+        "8,1",
+        "8,2",
+        "8,3",
+        "8,4"
+      ]
+    },
+    {
+      "id": "main-bedroom",
+      "name": "Main Bedroom",
+      "cells": [
+        "5,5",
+        "6,5",
+        "6,6",
+        "6,7",
+        "6,8",
+        "7,5",
+        "7,6",
+        "7,7",
+        "7,8",
+        "8,5",
+        "8,6",
+        "8,7",
+        "8,8"
+      ]
+    }
+  ],
+  "objectKinds": [
+    {
+      "id": "chair",
+      "name": "Chair",
+      "canOccupy": true,
+      "onWall": false,
+      "outsideOnly": false,
+      "art": "chair"
+    },
+    {
+      "id": "bed",
+      "name": "Bed",
+      "canOccupy": true,
+      "onWall": false,
+      "outsideOnly": false,
+      "art": "bed"
+    },
+    {
+      "id": "carpet",
+      "name": "Carpet",
+      "canOccupy": true,
+      "onWall": false,
+      "outsideOnly": false,
+      "art": "carpet"
+    },
+    {
+      "id": "desk",
+      "name": "Desk",
+      "canOccupy": false,
+      "onWall": false,
+      "outsideOnly": false,
+      "art": "desk"
+    },
+    {
+      "id": "table",
+      "name": "Table",
+      "canOccupy": false,
+      "onWall": false,
+      "outsideOnly": false,
+      "art": "table"
+    },
+    {
+      "id": "tv",
+      "name": "TV",
+      "canOccupy": false,
+      "onWall": false,
+      "outsideOnly": false,
+      "art": "tv"
+    },
+    {
+      "id": "plant",
+      "name": "Plant",
+      "canOccupy": false,
+      "onWall": false,
+      "outsideOnly": false,
+      "art": "plant"
+    },
+    {
+      "id": "window",
+      "name": "Window",
+      "canOccupy": true,
+      "onWall": true,
+      "outsideOnly": true,
+      "art": "bar"
+    },
+    {
+      "id": "bookcase",
+      "name": "Bookcase",
+      "canOccupy": false,
+      "onWall": false,
+      "outsideOnly": false,
+      "art": "bookcase"
+    }
+  ],
+  "objects": [
+    {
+      "id": "object-01",
+      "kindId": "plant",
+      "cell": "0,0"
+    },
+    {
+      "id": "object-02",
+      "kindId": "chair",
+      "cell": "1,1"
+    },
+    {
+      "id": "object-03",
+      "kindId": "bed",
+      "cell": "0,2",
+      "bedDirection": "E"
+    },
+    {
+      "id": "object-04",
+      "kindId": "chair",
+      "cell": "0,4"
+    },
+    {
+      "id": "object-05",
+      "kindId": "chair",
+      "cell": "1,4"
+    },
+    {
+      "id": "object-06",
+      "kindId": "bookcase",
+      "cell": "0,7"
+    },
+    {
+      "id": "object-07",
+      "kindId": "table",
+      "cell": "2,5"
+    },
+    {
+      "id": "object-08",
+      "kindId": "plant",
+      "cell": "2,7"
+    },
+    {
+      "id": "object-09",
+      "kindId": "table",
+      "cell": "2,8"
+    },
+    {
+      "id": "object-10",
+      "kindId": "chair",
+      "cell": "3,6"
+    },
+    {
+      "id": "object-11",
+      "kindId": "chair",
+      "cell": "3,7"
+    },
+    {
+      "id": "object-12",
+      "kindId": "table",
+      "cell": "3,0"
+    },
+    {
+      "id": "object-13",
+      "kindId": "table",
+      "cell": "3,1"
+    },
+    {
+      "id": "object-14",
+      "kindId": "bookcase",
+      "cell": "4,1"
+    },
+    {
+      "id": "object-15",
+      "kindId": "chair",
+      "cell": "3,3"
+    },
+    {
+      "id": "object-16",
+      "kindId": "chair",
+      "cell": "4,2"
+    },
+    {
+      "id": "object-17",
+      "kindId": "table",
+      "cell": "4,3"
+    },
+    {
+      "id": "object-18",
+      "kindId": "table",
+      "cell": "5,3"
+    },
+    {
+      "id": "object-19",
+      "kindId": "plant",
+      "cell": "4,4"
+    },
+    {
+      "id": "object-20",
+      "kindId": "chair",
+      "cell": "5,4"
+    },
+    {
+      "id": "object-21",
+      "kindId": "bookcase",
+      "cell": "4,7"
+    },
+    {
+      "id": "object-22",
+      "kindId": "bookcase",
+      "cell": "4,8"
+    },
+    {
+      "id": "object-23",
+      "kindId": "chair",
+      "cell": "5,6"
+    },
+    {
+      "id": "object-24",
+      "kindId": "table",
+      "cell": "7,0"
+    },
+    {
+      "id": "object-25",
+      "kindId": "table",
+      "cell": "7,1"
+    },
+    {
+      "id": "object-26",
+      "kindId": "table",
+      "cell": "7,3"
+    },
+    {
+      "id": "object-27",
+      "kindId": "plant",
+      "cell": "7,4"
+    },
+    {
+      "id": "object-28",
+      "kindId": "tv",
+      "cell": "8,3"
+    },
+    {
+      "id": "object-29",
+      "kindId": "plant",
+      "cell": "6,7"
+    },
+    {
+      "id": "object-30",
+      "kindId": "bed",
+      "cell": "7,5",
+      "bedDirection": "E"
+    },
+    {
+      "id": "object-31",
+      "kindId": "tv",
+      "cell": "7,8"
+    },
+    {
+      "id": "object-32",
+      "kindId": "table",
+      "cell": "8,7"
+    }
+  ],
+  "walls": [],
+  "suspects": [
+    {
+      "id": "amelia",
+      "name": "Amelia",
+      "clue": "There was a TV in her room, in the same row.",
+      "isVictim": false,
+      "portrait": "/people/crowded-house/amelia.jpg"
+    },
+    {
+      "id": "birdie",
+      "name": "Birdie",
+      "clue": "There was someone else in her room who was sitting in a chair.",
+      "isVictim": false,
+      "portrait": "/people/crowded-house/birdie.jpg"
+    },
+    {
+      "id": "chase",
+      "name": "Chase",
+      "clue": "Someone with glasses was in his room, south of him.",
+      "isVictim": false,
+      "portrait": "/people/crowded-house/chase.jpg"
+    },
+    {
+      "id": "dan",
+      "name": "Dan",
+      "clue": "The room directly south of his was occupied.",
+      "isVictim": false,
+      "portrait": "/people/crowded-house/dan.jpg"
+    },
+    {
+      "id": "evan",
+      "name": "Evan",
+      "clue": "He was not beside any wall.",
+      "isVictim": false,
+      "portrait": "/people/crowded-house/evan.jpg"
+    },
+    {
+      "id": "fabienne",
+      "name": "Fabienne",
+      "clue": "She was alone with two women.",
+      "isVictim": false,
+      "portrait": "/people/crowded-house/fabienne.jpg"
+    },
+    {
+      "id": "gus",
+      "name": "Gus",
+      "clue": "He was either in a chair or on a bed.",
+      "isVictim": false,
+      "portrait": "/people/crowded-house/gus.jpg"
+    },
+    {
+      "id": "holly",
+      "name": "Holly",
+      "clue": "She was in the second column.",
+      "isVictim": false,
+      "portrait": "/people/crowded-house/holly.jpg"
+    },
+    {
+      "id": "vincent",
+      "name": "Vincent",
+      "clue": "The victim. He is in the last remaining position.",
+      "isVictim": true,
+      "portrait": "/people/crowded-house/vincent.jpg"
+    }
+  ],
+  "caseClues": [
+    "There were exactly four empty rooms."
+  ],
+  "rules": {
+    "emptyRooms": 4
+  }
+}

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="9 5 80 90" aria-label="Bookcase">
+  <path d="M17 19h70v74H17z" fill="#56525a" opacity=".55"/>
+  <rect x="12" y="8" width="72" height="76" rx="2" fill="#564d58" stroke="#3e3a42" stroke-width="4"/>
+  <rect x="18" y="15" width="60" height="19" fill="#39363d"/>
+  <rect x="18" y="38" width="60" height="18" fill="#39363d"/>
+  <rect x="18" y="60" width="60" height="18" fill="#39363d"/>
+  <g fill="#f6f2ed" stroke="#3e3a42" stroke-width="1.3">
+    <path d="M23 20h8v12h-8zM35 17h8v15h-8zM47 19h7v13h-7zM58 18h8v14h-8zM69 22h5v10h-5z"/>
+    <path d="M22 43h8v11h-8zM32 41h9v13h-9zM45 43h7v11h-7zM55 40h7v14h-7zM65 43h8v11h-8z"/>
+    <path d="M22 64h7v12h-7zM32 64h8v12h-8zM44 62h7v14h-7zM55 64h9v12h-9zM67 63h7v13h-7z"/>
+  </g>
+  <path d="M61 17q6 8 10 15m-20 8 9 14m-14 8 7 14" stroke="#3e3a42" stroke-width="1.6"/>
+</svg>

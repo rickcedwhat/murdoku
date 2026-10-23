@@ -1,9 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { activeHypothesis, changeDeduction, newBranchWorkspace, undoDeduction } from './branches';
-import { fillLineWithXs, newSavedCase, parseCaseLibrary, upsertCase } from './cases';
+import { fillLineWithXs, importTargetsActiveCase, newSavedCase, parseCaseLibrary, upsertCase } from './cases';
 import { cell, newPuzzle, placeObject } from './puzzle';
 
 describe('case library', () => {
+  it('does not replace an active case just because an import has the same title', () => {
+    const active = newPuzzle();
+    const imported = { ...newPuzzle(), title: active.title };
+    expect(importTargetsActiveCase(imported, active.id)).toBe(false);
+    expect(importTargetsActiveCase({ ...imported, id: active.id }, active.id)).toBe(true);
+  });
+
   it('migrates a single browser save and retains it alongside a new case', () => {
     const puzzle = newPuzzle();
     puzzle.title = 'Old case';
@@ -17,6 +24,12 @@ describe('case library', () => {
     const library = upsertCase(migrated, next);
     expect(parseCaseLibrary(JSON.stringify({ version: 1, cases: library }), legacy).map((saved) => saved.puzzle.id))
       .toEqual([next.puzzle.id, puzzle.id]);
+  });
+
+  it('retains scratch notes when a case is saved and reopened', () => {
+    const saved = { ...newSavedCase(newPuzzle()), scratchNotes: 'Maybe the study is empty.\nCheck the glasses clue.' };
+    const [reopened] = parseCaseLibrary(JSON.stringify({ version: 1, cases: [saved] }), null);
+    expect(reopened.scratchNotes).toBe(saved.scratchNotes);
   });
 
   it('fills only eligible cells in the chosen line and can undo the Xs', () => {

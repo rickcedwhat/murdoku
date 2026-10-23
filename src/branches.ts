@@ -1,4 +1,4 @@
-import type { Placement, Puzzle } from './puzzle';
+import { objectCells, type Placement, type Puzzle } from './puzzle';
 
 export type CellNote = { type: 'empty' | 'blocked' } | { type: 'candidates'; suspectIds: string[] };
 export type Deduction = { placements: Placement[]; notes: Record<string, CellNote> };
@@ -87,7 +87,7 @@ function pruneDeduction(state: Deduction, puzzle: Puzzle): Deduction {
   const playable = new Set(puzzle.playable);
   const suspects = new Set(puzzle.suspects.map((suspect) => suspect.id));
   const blockingKinds = new Set(puzzle.objectKinds.filter((kind) => !kind.onWall && !kind.canOccupy).map((kind) => kind.id));
-  const blocked = new Set(puzzle.objects.filter((object) => !object.side && blockingKinds.has(object.kindId)).map((object) => object.cell));
+  const blocked = new Set<string>(puzzle.objects.filter((object) => !object.side && blockingKinds.has(object.kindId)).flatMap((object) => objectCells(puzzle, object)));
   const notes: Record<string, CellNote> = {};
   for (const [key, note] of Object.entries(state.notes)) {
     if (!playable.has(key) || blocked.has(key)) continue;

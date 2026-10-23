@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 const cellSchema = z.string().regex(/^\d+,\d+$/);
 const wallSideSchema = z.enum(['N', 'E', 'S', 'W']);
-export const OBJECT_ART = ['chair', 'bed', 'carpet', 'desk', 'table', 'tv', 'plant', 'custom', 'bar'] as const;
+export const OBJECT_ART = ['chair', 'bed', 'carpet', 'desk', 'table', 'tv', 'plant', 'bookcase', 'custom', 'bar'] as const;
 const objectArtSchema = z.enum(OBJECT_ART);
 
 export const DEFAULT_OBJECT_KINDS = [
@@ -13,6 +13,7 @@ export const DEFAULT_OBJECT_KINDS = [
   { id: 'table', name: 'Table', canOccupy: false, onWall: false, outsideOnly: false, art: 'table' },
   { id: 'tv', name: 'TV', canOccupy: false, onWall: false, outsideOnly: false, art: 'tv' },
   { id: 'plant', name: 'Plant', canOccupy: false, onWall: false, outsideOnly: false, art: 'plant' },
+  { id: 'bookcase', name: 'Bookcase', canOccupy: false, onWall: false, outsideOnly: false, art: 'bookcase' },
   { id: 'window', name: 'Window', canOccupy: true, onWall: true, outsideOnly: true, art: 'bar' },
 ] as const;
 
@@ -42,12 +43,14 @@ export const puzzleSchema = z.object({
     kindId: z.string().min(1),
     cell: cellSchema,
     side: wallSideSchema.optional(),
+    bedDirection: wallSideSchema.optional(),
   })),
   walls: z.array(z.object({ from: cellSchema, to: cellSchema })),
   suspects: z.array(z.object({
     id: z.string().min(1),
     name: z.string(),
     clue: z.string(),
+    portrait: z.string().optional(),
     isVictim: z.boolean(),
   })),
   caseClues: z.array(z.string()),
@@ -103,7 +106,7 @@ export function parsePuzzle(input: unknown): Puzzle {
     }), rules: normalizeRules('rules' in input ? input.rules : undefined), appearanceVersion: 4 }
     : input;
   const v2 = puzzleSchema.safeParse(candidate);
-  if (v2.success) return v2.data;
+  if (v2.success) return migrateLegacyBeds(v2.data);
   const old = puzzleV1Schema.parse(input);
   const customKinds = old.objects.map((object) => ({
     id: `legacy-${object.id}`,
@@ -113,14 +116,14 @@ export function parsePuzzle(input: unknown): Puzzle {
     outsideOnly: false,
     art: DEFAULT_OBJECT_KINDS.find((kind) => kind.name.toLowerCase() === object.name.trim().toLowerCase() && !kind.onWall)?.art ?? 'custom',
   }));
-  return puzzleSchema.parse({
+  return migrateLegacyBeds(puzzleSchema.parse({
     ...old,
     version: 2,
     appearanceVersion: 4,
     rules: normalizeRules(old.rules),
     objectKinds: [...DEFAULT_OBJECT_KINDS, ...customKinds],
     objects: old.objects.map((object) => ({ id: object.id, kindId: `legacy-${object.id}`, cell: object.cell })),
-  });
+  }));
 }
 
 export function cell(row: number, col: number): Cell {
@@ -178,21 +181,54 @@ function wallNeighbor(key: Cell, side: WallSide): Cell {
       : side === 'E' ? cell(row, col + 1) : cell(row, col - 1);
 }
 
+function migrateLegacyBeds(puzzle: Puzzle): Puzzle {
+  const bedKinds = new Set(puzzle.objectKinds.filter((kind) => kind.art === 'bed' && !kind.onWall).map((kind) => kind.id));
+  const occupied = new Set(puzzle.objects.filter((object) => !object.side).map((object) => object.cell));
+  for (const object of puzzle.objects) {
+    if (object.bedDirection && bedKinds.has(object.kindId)) occupied.add(wallNeighbor(object.cell as Cell, object.bedDirection));
+  }
+  let changed = false;
+  const objects = puzzle.objects.map((object) => {
+    if (object.bedDirection || !bedKinds.has(object.kindId)) return object;
+    const room = puzzle.rooms.find((item) => item.cells.includes(object.cell));
+    const direction = (['E', 'S', 'W', 'N'] as const).find((side) => {
+      const neighbor = wallNeighbor(object.cell as Cell, side);
+      return room?.cells.includes(neighbor) && !isWallEdge(puzzle, object.cell as Cell, side) && !occupied.has(neighbor);
+    });
+    if (!direction) return object;
+    occupied.add(wallNeighbor(object.cell as Cell, direction));
+    changed = true;
+    return { ...object, bedDirection: direction };
+  });
+  return changed ? { ...puzzle, objects } : puzzle;
+}
+
+export function objectCells(puzzle: Puzzle, object: Puzzle['objects'][number]): Cell[] {
+  const kind = puzzle.objectKinds.find((item) => item.id === object.kindId);
+  if (kind?.art !== 'bed' || kind.onWall) return [object.cell as Cell];
+  return object.bedDirection ? [object.cell as Cell, wallNeighbor(object.cell as Cell, object.bedDirection)] : [object.cell as Cell];
+}
+
 function objectSlot(key: Cell, side?: WallSide): string {
   return side ? [key, wallNeighbor(key, side)].sort().join('|') : `floor:${key}`;
 }
 
-export function placeObject(puzzle: Puzzle, kindId: string, key: Cell, side?: WallSide): Puzzle {
+export function placeObject(puzzle: Puzzle, kindId: string, key: Cell, side?: WallSide, bedDirection?: WallSide): Puzzle {
   const kind = puzzle.objectKinds.find((item) => item.id === kindId);
   if (!kind || !puzzle.playable.includes(key)) return puzzle;
   if (kind.onWall && (!side || !isWallEdge(puzzle, key, side))) return puzzle;
   if (kind.onWall && kind.art !== 'bar') return puzzle;
   if ((kind.id === 'window' || kind.outsideOnly) && (!side || !isOutsideWallEdge(puzzle, key, side))) return puzzle;
+  const direction = kind.art === 'bed' ? bedDirection ?? (['E', 'S', 'W', 'N'] as const).find((candidate) =>
+    puzzle.rooms.some((room) => room.cells.includes(key) && room.cells.includes(wallNeighbor(key, candidate)))) : undefined;
+  if (kind.art === 'bed' && (!direction || !puzzle.rooms.some((room) => room.cells.includes(key) && room.cells.includes(wallNeighbor(key, direction))))) return puzzle;
   const slot = objectSlot(key, kind.onWall ? side : undefined);
-  const objects = puzzle.objects.filter((object) => objectSlot(object.cell as Cell, object.side) !== slot);
+  const footprint = kind.art === 'bed' ? [key, wallNeighbor(key, direction!)] : [key];
+  const objects = puzzle.objects.filter((object) => objectSlot(object.cell as Cell, object.side) !== slot &&
+    (kind.onWall || object.side || !objectCells(puzzle, object).some((occupied) => footprint.includes(occupied))));
   return {
     ...puzzle,
-    objects: [...objects, { id: crypto.randomUUID(), kindId, cell: key, ...(kind.onWall ? { side } : {}) }],
+    objects: [...objects, { id: crypto.randomUUID(), kindId, cell: key, ...(kind.onWall ? { side } : {}), ...(direction ? { bedDirection: direction } : {}) }],
   };
 }
 
@@ -218,7 +254,7 @@ export function resizePuzzle(puzzle: Puzzle, rows: number, cols: number): Puzzle
       ...room,
       cells: [...room.cells.filter(inside), ...(index === 0 ? newCells : [])],
     })),
-    objects: puzzle.objects.filter((object) => inside(object.cell)),
+    objects: puzzle.objects.filter((object) => objectCells(puzzle, object).every(inside)),
     walls: puzzle.walls.filter((wall) => inside(wall.from) && inside(wall.to)),
   };
 }
@@ -273,8 +309,10 @@ export function validatePuzzle(puzzle: Puzzle): string[] {
     if (kind?.onWall && (!object.side || !isWallEdge(puzzle, object.cell as Cell, object.side))) problems.push(`${kind.name} must be on a wall edge.`);
     if ((kind?.id === 'window' || kind?.outsideOnly) && (!object.side || !isOutsideWallEdge(puzzle, object.cell as Cell, object.side))) problems.push(`${kind.name} must be on an outside wall.`);
     if (kind && !kind.onWall && object.side) problems.push(`${kind.name} must be in a cell.`);
+    if (kind?.art === 'bed' && object.bedDirection && !puzzle.rooms.some((room) => objectCells(puzzle, object).every((key) => room.cells.includes(key)))) problems.push('Each bed must cover two cells in one room.');
   }
-  if (new Set(puzzle.objects.map((object) => objectSlot(object.cell as Cell, object.side))).size !== puzzle.objects.length) problems.push('Only one object can occupy each cell or wall edge.');
+  const slots = puzzle.objects.flatMap((object) => object.side ? [objectSlot(object.cell as Cell, object.side)] : objectCells(puzzle, object).map((key) => objectSlot(key)));
+  if (new Set(slots).size !== slots.length) problems.push('Only one object can occupy each cell or wall edge.');
   if (puzzle.rules.emptyRows !== undefined && puzzle.rules.emptyRows > puzzle.rows) problems.push('Empty row count exceeds the grid.');
   if (puzzle.rules.emptyCols !== undefined && puzzle.rules.emptyCols > puzzle.cols) problems.push('Empty column count exceeds the grid.');
   if (puzzle.rules.emptyRooms !== undefined && puzzle.rules.emptyRooms > puzzle.rooms.length) problems.push('Empty room count exceeds the room count.');
@@ -299,7 +337,7 @@ export function validatePlacements(puzzle: Puzzle, placements: Placement[]): str
     if (!playable.has(placement.cell)) problems.push(`${suspect.name} is outside the playable map.`);
     if (cells.has(placement.cell)) problems.push('Two people occupy the same cell.');
     cells.add(placement.cell);
-    const object = puzzle.objects.find((item) => item.cell === placement.cell && !item.side);
+    const object = puzzle.objects.find((item) => !item.side && objectCells(puzzle, item).includes(placement.cell));
     const kind = puzzle.objectKinds.find((item) => item.id === object?.kindId);
     if (kind && !kind.canOccupy) problems.push(`${suspect.name} is on blocked furniture (${kind.name}).`);
     const [row, col] = coordinates(placement.cell);

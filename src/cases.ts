@@ -1,5 +1,5 @@
 import { changeDeduction, newBranchWorkspace, parseBranchWorkspace, type BranchWorkspace, type CellNote } from './branches';
-import { parsePuzzle, type Cell, type Placement, type Puzzle } from './puzzle';
+import { objectCells, parsePuzzle, type Cell, type Placement, type Puzzle } from './puzzle';
 
 export const CASE_LIBRARY_KEY = 'murdoku-cases-v1';
 export const LEGACY_CASE_KEY = 'murdoku-companion-v1';
@@ -9,6 +9,7 @@ export type SavedCase = {
   puzzle: Puzzle;
   branchWorkspace: BranchWorkspace;
   consideredSuspectIds: string[];
+  scratchNotes: string;
   lastMode: CaseMode;
   updatedAt: string;
 };
@@ -42,6 +43,7 @@ export function parseSavedCase(input: unknown): SavedCase | null {
       puzzle,
       branchWorkspace: parseBranchWorkspace(raw.branchWorkspace, puzzle, legacyDeduction(raw, puzzle)),
       consideredSuspectIds,
+      scratchNotes: typeof raw.scratchNotes === 'string' ? raw.scratchNotes : '',
       lastMode: raw.lastMode === 'play' ? 'play' : 'edit',
       updatedAt: typeof raw.updatedAt === 'string' && !Number.isNaN(Date.parse(raw.updatedAt)) ? raw.updatedAt : new Date().toISOString(),
     };
@@ -76,11 +78,15 @@ export function parseCaseLibrary(rawLibrary: string | null, rawLegacy: string | 
 }
 
 export function newSavedCase(puzzle: Puzzle, mode: CaseMode = 'edit'): SavedCase {
-  return { puzzle, branchWorkspace: newBranchWorkspace(), consideredSuspectIds: [], lastMode: mode, updatedAt: new Date().toISOString() };
+  return { puzzle, branchWorkspace: newBranchWorkspace(), consideredSuspectIds: [], scratchNotes: '', lastMode: mode, updatedAt: new Date().toISOString() };
 }
 
 export function upsertCase(cases: SavedCase[], saved: SavedCase): SavedCase[] {
   return [saved, ...cases.filter((entry) => entry.puzzle.id !== saved.puzzle.id)];
+}
+
+export function importTargetsActiveCase(imported: Puzzle, activeCaseId: string | null): boolean {
+  return activeCaseId !== null && imported.id === activeCaseId;
 }
 
 export function fillLineWithXs(workspace: BranchWorkspace, puzzle: Puzzle, confirmedCell: Cell, axis: 'row' | 'column'): BranchWorkspace {
@@ -89,7 +95,7 @@ export function fillLineWithXs(workspace: BranchWorkspace, puzzle: Puzzle, confi
   if (!placement) return workspace;
   const [targetRow, targetCol] = confirmedCell.split(',').map(Number);
   const occupied = new Set<string>(deduction?.placements.map((item) => item.cell));
-  const blocked = new Set(puzzle.objects.filter((object) => !object.side && !puzzle.objectKinds.find((kind) => kind.id === object.kindId)?.canOccupy).map((object) => object.cell));
+  const blocked = new Set<string>(puzzle.objects.filter((object) => !object.side && !puzzle.objectKinds.find((kind) => kind.id === object.kindId)?.canOccupy).flatMap((object) => objectCells(puzzle, object)));
   const cells = puzzle.playable.filter((key) => {
     const [row, col] = key.split(',').map(Number);
     return (axis === 'row' ? row === targetRow : col === targetCol) && key !== confirmedCell && !occupied.has(key) && !blocked.has(key) && deduction?.notes[key]?.type !== 'blocked';

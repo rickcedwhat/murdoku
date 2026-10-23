@@ -1,7 +1,28 @@
 import { describe, expect, it } from 'vitest';
-import { assignCellToRoom, cell, isWallEdge, newPuzzle, normalizeRuleCount, parsePuzzle, placeObject, resizePuzzle, validatePlacements, validatePuzzle } from './puzzle';
+import { assignCellToRoom, cell, isWallEdge, newPuzzle, normalizeRuleCount, objectCells, parsePuzzle, placeObject, resizePuzzle, validatePlacements, validatePuzzle } from './puzzle';
 
 describe('puzzle rules', () => {
+  it('places a bed across two cells and rejects a footprint crossing a room wall', () => {
+    let puzzle = newPuzzle();
+    puzzle = placeObject(puzzle, 'bed', cell(1, 1), undefined, 'E');
+    expect(objectCells(puzzle, puzzle.objects[0])).toEqual([cell(1, 1), cell(1, 2)]);
+    expect(validatePuzzle(puzzle)).toEqual([]);
+    puzzle = placeObject(puzzle, 'table', cell(1, 2));
+    expect(puzzle.objects.map((object) => object.kindId)).toEqual(['table']);
+    const split = assignCellToRoom({ ...puzzle, rooms: [...puzzle.rooms, { id: 'other', name: 'Other', cells: [] }] }, cell(2, 2), 'other');
+    expect(placeObject(split, 'bed', cell(2, 1), undefined, 'E')).toBe(split);
+  });
+  it('migrates older one-cell beds without overlapping furniture', () => {
+    const base = newPuzzle();
+    const legacyBed = { id: 'old-bed', kindId: 'bed', cell: cell(0, 0) };
+    const nextToTable = parsePuzzle({ ...base, objects: [legacyBed, { id: 'table', kindId: 'table', cell: cell(0, 1) }] });
+    expect(nextToTable.objects[0].bedDirection).toBe('S');
+    expect(objectCells(nextToTable, nextToTable.objects[0])).toEqual([cell(0, 0), cell(1, 0)]);
+    const surrounded = parsePuzzle({ ...base, objects: [legacyBed, { id: 'east', kindId: 'table', cell: cell(0, 1) }, { id: 'south', kindId: 'table', cell: cell(1, 0) }] });
+    expect(surrounded.objects[0].bedDirection).toBeUndefined();
+    expect(objectCells(surrounded, surrounded.objects[0])).toEqual([cell(0, 0)]);
+    expect(validatePuzzle(surrounded)).toEqual([]);
+  });
   it('keeps an existing case when an older save has a fractional rule count', () => {
     const puzzle = newPuzzle();
     puzzle.title = 'Saved case';
@@ -112,5 +133,12 @@ describe('puzzle rules', () => {
     expect(parsePuzzle({ ...puzzle, objectKinds: [{ id: 'window', name: 'Window', canOccupy: true, onWall: true, shape: 'diamond' }] }).objectKinds[0].art).toBe('bar');
     const savedTable = { ...puzzle, appearanceVersion: 3, objectKinds: [{ id: 'old-table', name: 'Table', canOccupy: false, onWall: false, art: 'custom' }] };
     expect(parsePuzzle(savedTable).objectKinds[0].art).toBe('table');
+  });
+
+  it('keeps optional person portraits through a JSON import', () => {
+    const puzzle = newPuzzle();
+    const withPortrait = { ...puzzle, suspects: [{ ...puzzle.suspects[0], portrait: '/people/example.jpg' }, ...puzzle.suspects.slice(1)] };
+    expect(parsePuzzle(JSON.parse(JSON.stringify(withPortrait))).suspects[0].portrait).toBe('/people/example.jpg');
+    expect(parsePuzzle(puzzle).suspects[0].portrait).toBeUndefined();
   });
 });

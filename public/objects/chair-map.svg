@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="7 0 88 96" aria-label="Chair">
+  <path d="M16 58c-5 2-8 8-8 17 0 12 7 18 19 18h48c12 0 18-7 18-19 0-9-3-14-9-17l-4 24H21z" fill="#66636b" opacity=".65"/>
+  <g fill="#f4f2f1" stroke="#6d6b72" stroke-width="3.2" stroke-linejoin="round">
+    <path d="M23 45V27c0-17 12-25 27-25s27 8 27 25v18H23z"/>
+    <path d="M25 27c2-13 11-20 25-20s23 7 25 20" fill="none"/>
+    <path d="M22 44h56v33c0 6-5 10-11 10H33c-6 0-11-4-11-10z"/>
+    <rect x="29" y="50" width="42" height="30" rx="5" fill="#fbfaf9"/>
+    <rect x="11" y="43" width="16" height="38" rx="7"/>
+    <rect x="73" y="43" width="16" height="38" rx="7"/>
+    <path d="M12 76c1 10 7 13 16 13h44c9 0 15-3 16-13" fill="none"/>
+  </g>
+</svg>

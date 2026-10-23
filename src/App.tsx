@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import {
   assignCellToRoom,
   cell,
@@ -7,6 +7,7 @@ import {
   isWallEdge,
   newPuzzle,
   normalizeRuleCount,
+  objectCells,
   OBJECT_ART,
   parsePuzzle,
   placeObject,
@@ -15,10 +16,12 @@ import {
   validatePuzzle,
   type Cell,
   type Puzzle,
+  type WallSide,
 } from './puzzle';
 import { ObjectMark } from './ObjectMark';
 import { activeHypothesis, applyHypothesisToMain, changeDeduction, createHypothesis, discardHypothesis, newBranchWorkspace, reconcileBranches, redoDeduction, renameHypothesis, restoreCheckpoint, saveCheckpoint, switchHypothesis, undoDeduction, type BranchWorkspace } from './branches';
-import { CASE_LIBRARY_KEY, LEGACY_CASE_KEY, fillLineWithXs, newSavedCase, parseCaseLibrary, upsertCase, type SavedCase } from './cases';
+import { CASE_LIBRARY_KEY, LEGACY_CASE_KEY, fillLineWithXs, importTargetsActiveCase, newSavedCase, parseCaseLibrary, upsertCase, type SavedCase } from './cases';
+import { suspectLetter as letterForSuspect, suspectsForInitial } from './suspectLetters';
 
 type Mode = 'edit' | 'play';
 type Tool = 'outline' | 'room' | 'object' | 'erase';
@@ -41,19 +44,37 @@ export default function App() {
   const [puzzle, setPuzzle] = useState<Puzzle>(() => initial[0]?.puzzle ?? newPuzzle());
   const [branchWorkspace, setBranchWorkspace] = useState<BranchWorkspace>(() => initial[0]?.branchWorkspace ?? newBranchWorkspace());
   const [consideredSuspectIds, setConsideredSuspectIds] = useState<string[]>(initial[0]?.consideredSuspectIds ?? []);
+  const [scratchNotes, setScratchNotes] = useState(initial[0]?.scratchNotes ?? '');
   const [mode, setMode] = useState<Mode>('edit');
   const [editorTab, setEditorTab] = useState<EditorTab>('setup');
-  const [playTab, setPlayTab] = useState<'people' | 'clues' | 'checks'>('clues');
+  const [playTab, setPlayTab] = useState<'clues' | 'checks'>('clues');
   const [noteTool, setNoteTool] = useState<NoteTool>('candidate');
   const [tool, setTool] = useState<Tool>('room');
   const [selectedRoom, setSelectedRoom] = useState(initial[0]?.puzzle.rooms[0]?.id ?? '');
   const [selectedKind, setSelectedKind] = useState(initial[0]?.puzzle.objectKinds[0]?.id ?? '');
+  const [bedDirection, setBedDirection] = useState<WallSide>('E');
   const [activeNoteCell, setActiveNoteCell] = useState<Cell | null>(null);
+  const [personChoices, setPersonChoices] = useState<{ cell: Cell; ids: string[] } | null>(null);
   const [notice, setNotice] = useState('');
   const [saveFailed, setSaveFailed] = useState(false);
+  const [cellWidth, setCellWidth] = useState(58);
+  const boardRef = useRef<HTMLDivElement>(null);
   const drawingPointer = useRef<number | null>(null);
   const paintedCells = useRef(new Set<string>());
   const libraryReady = useRef(false);
+
+  useEffect(() => {
+    const board = boardRef.current;
+    if (!board) return;
+    const measure = () => {
+      const width = board.querySelector('.cell')?.getBoundingClientRect().width;
+      if (width) setCellWidth((current) => Math.abs(current - width) > 0.5 ? width : current);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(board);
+    return () => observer.disconnect();
+  }, [activeCaseId, puzzle.rows, puzzle.cols]);
 
   useEffect(() => {
     setBranchWorkspace((current) => {
@@ -64,8 +85,8 @@ export default function App() {
 
   useEffect(() => {
     if (!activeCaseId) return;
-    setCases((current) => upsertCase(current, { puzzle, branchWorkspace, consideredSuspectIds, lastMode: mode, updatedAt: new Date().toISOString() }));
-  }, [activeCaseId, puzzle, branchWorkspace, consideredSuspectIds, mode]);
+    setCases((current) => upsertCase(current, { puzzle, branchWorkspace, consideredSuspectIds, scratchNotes, lastMode: mode, updatedAt: new Date().toISOString() }));
+  }, [activeCaseId, puzzle, branchWorkspace, consideredSuspectIds, scratchNotes, mode]);
 
   useEffect(() => {
     if (!libraryReady.current) { libraryReady.current = true; return; }
@@ -84,14 +105,47 @@ export default function App() {
     puzzle.rooms.forEach((room, index) => room.cells.forEach((key) => byCell.set(key, index)));
     return byCell;
   }, [puzzle.rooms]);
-  const roomLabelCells = useMemo(() => new Set(puzzle.rooms.map((room) =>
-    [...room.cells].sort((a, b) => {
-      const [ar, ac] = coordinates(a);
-      const [br, bc] = coordinates(b);
-      return ar - br || ac - bc;
-    })[0],
-  ).filter(Boolean)), [puzzle.rooms]);
-  const floorObjectsByCell = useMemo(() => new Map(puzzle.objects.filter((object) => !object.side).map((object) => [object.cell, object])), [puzzle.objects]);
+  const roomLabels = useMemo(() => {
+    const labels = new Map<Cell, { edge: 'top' | 'bottom'; left: string; fontSize: number }>();
+    const occupied = new Set(puzzle.objects.filter((object) => !object.side).flatMap((object) => objectCells(puzzle, object)));
+    const context = document.createElement('canvas').getContext('2d');
+    for (const room of puzzle.rooms) {
+      const roomCells = new Set(room.cells);
+      const roomCenter = room.cells.reduce((sum, key) => sum + coordinates(key)[1] + 0.5, 0) / Math.max(room.cells.length, 1);
+      const fontSize = room.name.length > 11 ? 11 : 12;
+      if (context) context.font = `900 ${fontSize}px Georgia`;
+      const labelWidth = ((context?.measureText(room.name.toUpperCase()).width ?? room.name.length * fontSize * 0.65) + 22) / cellWidth;
+      const candidates: { key: Cell; edge: 'top' | 'bottom'; left: string; blocked: number; spill: number; score: number }[] = [];
+      for (const key of room.cells) {
+        const [row, col] = coordinates(key);
+        for (const edge of ['top', 'bottom'] as const) {
+          const boundary = !roomCells.has(cell(row + (edge === 'top' ? -1 : 1), col));
+          let runStart = col;
+          let runEnd = col;
+          while (roomCells.has(cell(row, runStart - 1))) runStart--;
+          while (roomCells.has(cell(row, runEnd + 1))) runEnd++;
+          for (let step = 1; step <= 10; step++) {
+            const x = col + step / 10;
+            const left = x - labelWidth / 2;
+            const right = x + labelWidth / 2;
+            const spill = Math.max(0, runStart - left) + Math.max(0, right - runEnd - 1);
+            const covered = Array.from({ length: Math.max(0, Math.ceil(right) - Math.floor(left)) }, (_, index) => cell(row, Math.floor(left) + index));
+            const blocked = covered.reduce((total, coveredCell) => {
+              if (!occupied.has(coveredCell) && !puzzle.objects.some((object) => object.cell === coveredCell && object.side === (edge === 'top' ? 'N' : 'S'))) return total;
+              const coveredCol = coordinates(coveredCell)[1];
+              return total + Math.max(0, Math.min(right, coveredCol + 1) - Math.max(left, coveredCol));
+            }, 0);
+            const score = Math.abs(x - roomCenter) * 10 + (boundary ? 0 : 3) + (edge === 'bottom' ? 0.5 : 0);
+            candidates.push({ key: key as Cell, edge, left: `${(x - col) * 100}%`, blocked, spill, score });
+          }
+        }
+      }
+      const best = candidates.sort((a, b) => (a.spill > 0 ? 1 : 0) - (b.spill > 0 ? 1 : 0) || a.blocked - b.blocked || a.score - b.score || a.spill - b.spill)[0];
+      if (best) labels.set(best.key, { edge: best.edge, left: best.left, fontSize });
+    }
+    return labels;
+  }, [puzzle, cellWidth]);
+  const floorObjectsByCell = useMemo(() => new Map(puzzle.objects.filter((object) => !object.side).flatMap((object) => objectCells(puzzle, object).map((key) => [key, object] as const))), [puzzle]);
   const wallObjectsByCell = useMemo(() => {
     const byCell = new Map<string, Puzzle['objects']>();
     for (const object of puzzle.objects.filter((item) => item.side)) {
@@ -108,9 +162,21 @@ export default function App() {
   const setupProblems = validatePuzzle(puzzle);
   const playProblems = validatePlacements(puzzle, placements);
   function suspectLetter(id: string): string {
-    const index = puzzle.suspects.findIndex((suspect) => suspect.id === id);
-    if (index < 0) return '?';
-    return String.fromCharCode(65 + index);
+    return letterForSuspect(puzzle.suspects, id);
+  }
+
+  function moveNoteFocus(key: Cell, arrow: string) {
+    const [row, col] = coordinates(key);
+    const [stepRow, stepCol] = arrow === 'ArrowUp' ? [-1, 0] : arrow === 'ArrowDown' ? [1, 0] : arrow === 'ArrowLeft' ? [0, -1] : [0, 1];
+    for (let nextRow = row + stepRow, nextCol = col + stepCol; nextRow >= 0 && nextRow < puzzle.rows && nextCol >= 0 && nextCol < puzzle.cols; nextRow += stepRow, nextCol += stepCol) {
+      const nextKey = cell(nextRow, nextCol);
+      const nextCell = document.getElementById(`deduction-${nextKey}`) as HTMLButtonElement | null;
+      if (nextCell && !nextCell.disabled) {
+        setActiveNoteCell(nextKey);
+        nextCell.focus();
+        return;
+      }
+    }
   }
 
   function markCell(key: Cell, suspectId?: string) {
@@ -154,12 +220,60 @@ export default function App() {
     setNotice('');
   }
 
+  async function uploadPortrait(suspectId: string, file?: File) {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { setNotice('Choose an image for the portrait.'); return; }
+    try {
+      const bitmap = await createImageBitmap(file);
+      const canvas = document.createElement('canvas');
+      canvas.width = 320;
+      canvas.height = 320;
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Canvas unavailable');
+      const size = Math.min(bitmap.width, bitmap.height);
+      context.drawImage(bitmap, (bitmap.width - size) / 2, (bitmap.height - size) / 2, size, size, 0, 0, 320, 320);
+      bitmap.close();
+      const portrait = canvas.toDataURL('image/jpeg', 0.82);
+      setPuzzle((current) => ({ ...current, suspects: current.suspects.map((suspect) => suspect.id === suspectId ? { ...suspect, portrait } : suspect) }));
+      setNotice('Portrait added.');
+    } catch {
+      setNotice('Could not read that portrait image.');
+    }
+  }
+
   function typePerson(key: Cell, typed: string) {
     if (noteTool !== 'candidate' && noteTool !== 'confirmed') return false;
-    const person = puzzle.suspects.find((suspect) => suspectLetter(suspect.id).toLowerCase() === typed.toLowerCase());
-    if (!person) return false;
-    markCell(key, person.id);
+    const matches = suspectsForInitial(puzzle.suspects, typed);
+    if (!matches.length) return false;
+    if (matches.length > 1) {
+      setPersonChoices({ cell: key, ids: matches.map((person) => person.id) });
+      return true;
+    }
+    setPersonChoices(null);
+    markCell(key, matches[0].id);
     return true;
+  }
+
+  function choosePerson(key: Cell, id: string) {
+    setPersonChoices(null);
+    markCell(key, id);
+    document.getElementById(`deduction-${key}`)?.focus();
+  }
+
+  function handleNoteKeyDown(event: KeyboardEvent<HTMLButtonElement>, key: Cell) {
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) {
+      event.preventDefault();
+      setPersonChoices(null);
+      moveNoteFocus(key, event.key);
+    } else if (event.key === 'Escape' && personChoices) {
+      event.preventDefault();
+      setPersonChoices(null);
+    } else if (personChoices?.cell === key && /^[1-9]$/.test(event.key) && personChoices.ids[Number(event.key) - 1]) {
+      event.preventDefault();
+      choosePerson(key, personChoices.ids[Number(event.key) - 1]);
+    } else if (!event.repeat && event.key.length === 1 && typePerson(key, event.key)) {
+      event.preventDefault();
+    }
   }
 
   function paintSelected(key: Cell) {
@@ -171,7 +285,7 @@ export default function App() {
       const kind = kindById.get(selectedKind);
       if (!kind) return;
       if (kind.onWall) return;
-      setPuzzle((current) => placeObject(current, selectedKind, key));
+      setPuzzle((current) => placeObject(current, selectedKind, key, undefined, bedDirection));
     }
     setNotice('');
   }
@@ -195,6 +309,7 @@ export default function App() {
 
   function continuePaintStroke(event: PointerEvent<HTMLDivElement>) {
     if (drawingPointer.current !== event.pointerId) return;
+    if (tool === 'object' && kindById.get(selectedKind)?.art === 'bed') return;
     const key = roomCellFromPoint(event);
     if (key) paintSelected(key);
   }
@@ -214,7 +329,7 @@ export default function App() {
           ...puzzle,
           playable: puzzle.playable.filter((item) => item !== key),
           rooms: puzzle.rooms.map((room) => ({ ...room, cells: room.cells.filter((item) => item !== key) })),
-          objects: puzzle.objects.filter((object) => object.cell !== key),
+          objects: puzzle.objects.filter((object) => !objectCells(puzzle, object).includes(key)),
           walls: puzzle.walls.filter((wall) => wall.from !== key && wall.to !== key),
         });
       } else {
@@ -232,7 +347,7 @@ export default function App() {
       setPuzzle((current) => assignCellToRoom(current, key, selectedRoom));
       setNotice('');
     } else if (tool === 'erase') {
-      updatePuzzle({ ...puzzle, objects: puzzle.objects.filter((object) => object.cell !== key) });
+      updatePuzzle({ ...puzzle, objects: puzzle.objects.filter((object) => !objectCells(puzzle, object).includes(key)) });
     } else if (tool === 'object') {
       if (kindById.get(selectedKind)?.onWall) return;
       paintedCells.current.clear();
@@ -319,19 +434,24 @@ export default function App() {
     if (!file) return;
     try {
       const imported = parsePuzzle(JSON.parse(await file.text()));
-      const parsed = { ...imported, id: crypto.randomUUID() };
+      const replacingCurrent = importTargetsActiveCase(imported, activeCaseId);
+      const parsed = { ...imported, id: replacingCurrent ? imported.id : crypto.randomUUID() };
       const problems = validatePuzzle(parsed);
-      setCases((current) => upsertCase(current, newSavedCase(parsed)));
+      setCases((current) => upsertCase(current, replacingCurrent
+        ? { puzzle: parsed, branchWorkspace: reconcileBranches(branchWorkspace, parsed), consideredSuspectIds: consideredSuspectIds.filter((id) => parsed.suspects.some((suspect) => suspect.id === id)), scratchNotes, lastMode: 'edit', updatedAt: new Date().toISOString() }
+        : newSavedCase(parsed)));
       setActiveCaseId(parsed.id);
       setPuzzle(parsed);
-      setBranchWorkspace(newBranchWorkspace());
-      setConsideredSuspectIds([]);
+      setBranchWorkspace(replacingCurrent ? reconcileBranches(branchWorkspace, parsed) : newBranchWorkspace());
+      setConsideredSuspectIds(replacingCurrent ? consideredSuspectIds.filter((id) => parsed.suspects.some((suspect) => suspect.id === id)) : []);
+      if (!replacingCurrent) setScratchNotes('');
       setSelectedRoom(parsed.rooms[0]?.id ?? '');
       setSelectedKind(parsed.objectKinds[0]?.id ?? '');
       setActiveNoteCell(null);
+      setPersonChoices(null);
       setMode('edit');
       setEditorTab('setup');
-      setNotice(problems.length ? `Case imported with ${problems.length} item${problems.length === 1 ? '' : 's'} to correct.` : 'Case imported.');
+      setNotice(problems.length ? `Case imported with ${problems.length} item${problems.length === 1 ? '' : 's'} to correct.` : replacingCurrent ? 'Case updated from JSON.' : 'Case imported.');
     } catch {
       setNotice('Could not read that puzzle JSON file.');
     }
@@ -344,9 +464,11 @@ export default function App() {
     setPuzzle(next);
     setBranchWorkspace(newBranchWorkspace());
     setConsideredSuspectIds([]);
+    setScratchNotes('');
     setSelectedRoom(next.rooms[0].id);
     setSelectedKind(next.objectKinds[0].id);
     setActiveNoteCell(null);
+    setPersonChoices(null);
     setMode('edit');
     setEditorTab('setup');
     setNotice('New case ready.');
@@ -357,9 +479,11 @@ export default function App() {
     setPuzzle(saved.puzzle);
     setBranchWorkspace(saved.branchWorkspace);
     setConsideredSuspectIds(saved.consideredSuspectIds);
+    setScratchNotes(saved.scratchNotes);
     setSelectedRoom(saved.puzzle.rooms[0]?.id ?? '');
     setSelectedKind(saved.puzzle.objectKinds[0]?.id ?? '');
     setActiveNoteCell(null);
+    setPersonChoices(null);
     setMode(saved.lastMode);
     setNotice('');
   }
@@ -415,6 +539,7 @@ export default function App() {
             </div>}
             <div className="board-scroll">
               <div
+                ref={boardRef}
                 className={`board ${mode === 'edit' && (tool === 'room' || tool === 'object') ? 'painting' : ''}`}
                 style={{ gridTemplateColumns: `repeat(${puzzle.cols}, minmax(46px, 1fr))` }}
                 onPointerDown={beginPaintStroke}
@@ -431,21 +556,30 @@ export default function App() {
                   const room = roomIndex === undefined ? undefined : puzzle.rooms[roomIndex];
                   const floorObject = floorObjectsByCell.get(key);
                   const floorKind = floorObject && kindById.get(floorObject.kindId);
+                  const bedCells = floorObject && floorKind?.art === 'bed' ? objectCells(puzzle, floorObject) : [];
+                  const bedPart = bedCells.length === 2 ? (
+                    bedCells.map(coordinates).sort((a, b) => a[0] - b[0] || a[1] - b[1])[0].join(',') === key ? 'first' : 'second'
+                  ) : undefined;
+                  const bedAxis = bedCells.length === 2 && coordinates(bedCells[0])[0] !== coordinates(bedCells[1])[0] ? 'vertical' : 'horizontal';
                   const connections = floorObject && (['N', 'E', 'S', 'W'] as const).filter((side) => {
                     const adjacent = side === 'N' ? cell(row - 1, col) : side === 'S' ? cell(row + 1, col) : side === 'E' ? cell(row, col + 1) : cell(row, col - 1);
-                    return floorObjectsByCell.get(adjacent)?.kindId === floorObject.kindId;
+                    return floorObjectsByCell.get(adjacent)?.kindId === floorObject.kindId && roomByCell.get(adjacent) === roomIndex;
                   });
                   const wallObjects = wallObjectsByCell.get(key) ?? [];
                   const selected = mode === 'edit' && tool === 'room' && room?.id === selectedRoom;
+                  const roomWalls = isPlayable && roomIndex !== undefined ? {
+                    top: row === 0 || roomByCell.get(cell(row - 1, col)) !== roomIndex,
+                    left: col === 0 || roomByCell.get(cell(row, col - 1)) !== roomIndex,
+                    bottom: row === puzzle.rows - 1 || !playable.has(cell(row + 1, col)),
+                    right: col === puzzle.cols - 1 || !playable.has(cell(row, col + 1)),
+                  } : null;
                   const tileStyle = isPlayable && roomIndex !== undefined ? {
                     backgroundColor: ROOM_COLORS[roomIndex % ROOM_COLORS.length],
-                    borderTopWidth: row === 0 || roomByCell.get(cell(row - 1, col)) !== roomIndex ? 3 : 1,
-                    borderLeftWidth: col === 0 || roomByCell.get(cell(row, col - 1)) !== roomIndex ? 3 : 1,
                   } : undefined;
                   return <div
                     key={key}
                     data-cell={key}
-                    className={`cell ${isPlayable ? '' : 'outside'} ${selected ? 'room-selected' : ''} ${floorKind?.art === 'table' || floorKind?.art === 'carpet' ? 'tile-board-cell' : ''}`}
+                    className={`cell ${isPlayable ? '' : 'outside'} ${selected ? 'room-selected' : ''} ${floorKind?.art === 'table' || floorKind?.art === 'carpet' || floorKind?.art === 'bed' ? 'tile-board-cell' : ''} ${bedPart === 'first' ? 'bed-anchor' : ''}`}
                     role={mode === 'edit' ? 'button' : undefined}
                     tabIndex={mode === 'edit' ? 0 : undefined}
                     style={tileStyle}
@@ -455,8 +589,12 @@ export default function App() {
                     onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); handleCell(key); } }}
                   >
                     {isPlayable && <>
-                      {room && roomLabelCells.has(key) && <span className="cell-room">{room.name}</span>}
-                      {floorKind && <span className={`cell-object ${floorKind.art === 'table' || floorKind.art === 'carpet' ? 'tile-cell-object' : ''}`} title={floorKind.name}><ObjectMark kind={floorKind} connections={connections} /></span>}
+                      {roomWalls?.top && <span className="room-wall room-wall-top" aria-hidden="true" />}
+                      {roomWalls?.left && <span className="room-wall room-wall-left" aria-hidden="true" />}
+                      {roomWalls?.bottom && <span className="room-wall room-wall-bottom" aria-hidden="true" />}
+                      {roomWalls?.right && <span className="room-wall room-wall-right" aria-hidden="true" />}
+                      {room && roomLabels.has(key) && <span className={`cell-room label-${roomLabels.get(key)?.edge}`} style={{ left: roomLabels.get(key)?.left, fontSize: roomLabels.get(key)?.fontSize }}>{room.name}</span>}
+                      {floorKind && <span className={`cell-object ${floorKind.art === 'table' || floorKind.art === 'carpet' || floorKind.art === 'bed' ? 'tile-cell-object' : ''}`} title={floorKind.name}><ObjectMark kind={floorKind} connections={connections} bedPart={bedPart} bedAxis={bedAxis} bedReverse={floorObject?.bedDirection === 'W' || floorObject?.bedDirection === 'N'} /></span>}
                       {wallObjects.map((object) => {
                         const wallKind = kindById.get(object.kindId);
                         return wallKind && <ObjectMark key={object.id} kind={wallKind} className={`wall-object wall-${object.side?.toLowerCase()}`} />;
@@ -495,15 +633,20 @@ export default function App() {
                 {activeBranch.id !== 'main' && <div className="branch-actions branch-outcomes"><button type="button" onClick={() => setBranchWorkspace(applyHypothesisToMain)}>Apply to Main</button><button type="button" onClick={() => setBranchWorkspace(discardHypothesis)}>Discard hypothesis</button></div>}
                 <div className="history-actions"><button type="button" disabled={!activeBranch.undo.length} onClick={() => setBranchWorkspace(undoDeduction)}>↶ Undo</button><button type="button" disabled={!activeBranch.redo.length} onClick={() => setBranchWorkspace(redoDeduction)}>↷ Redo</button><button type="button" onClick={() => setBranchWorkspace((current) => changeDeduction(current, () => ({ placements: [], notes: {} })))}>Reset notes</button></div>
               </div>
-              <p className="hint">Click a cell, then type a person's letter. Pencil letters are lowercase; confirmed letters are uppercase. Use Empty X for deductions; furniture blocks cells on the map.</p>
+              <p className="hint">Click a cell, then type a person's initial (V for the victim). If initials repeat, choose the person shown. Use arrow keys to move between cells.</p>
               <div className="note-tools" role="group" aria-label="Deduction mark">
                 {([['candidate', 'Pencil letters'], ['confirmed', 'Confirmed'], ['empty', 'Empty X'], ['erase', 'Erase']] as const).map(([value, label]) => <button key={value} type="button" className={noteTool === value ? 'selected' : ''} onClick={() => {
                   setNoteTool(value);
+                  setPersonChoices(null);
                   if (activeNoteCell) document.getElementById(`deduction-${activeNoteCell}`)?.focus();
                 }}>{label}</button>)}
               </div>
+              {personChoices && <div className="person-choices" role="group" aria-label="Choose person for repeated initial"><span>Which person?</span>{personChoices.ids.map((id, index) => {
+                const person = puzzle.suspects.find((suspect) => suspect.id === id);
+                return person && <button key={id} type="button" onClick={() => choosePerson(personChoices.cell, id)}>{index < 9 ? `${index + 1} · ` : ''}{suspectLetter(id)} {person.name}</button>;
+              })}<span className="choice-hint">Press a number or click a name.</span></div>}
               {selectedPlacement && <div className="line-actions"><span>{suspectLetter(selectedPlacement.suspectId)} confirmed at row {coordinates(selectedPlacement.cell)[0] + 1}, column {coordinates(selectedPlacement.cell)[1] + 1}</span><button type="button" onClick={() => setBranchWorkspace((current) => fillLineWithXs(current, puzzle, selectedPlacement.cell, 'row'))}>Fill row Xs</button><button type="button" onClick={() => setBranchWorkspace((current) => fillLineWithXs(current, puzzle, selectedPlacement.cell, 'column'))}>Fill column Xs</button></div>}
-              <div className="deduction-scroll"><div className="deduction-grid" style={{ gridTemplateColumns: `repeat(${puzzle.cols}, ${deductionCellSize}px)` }}>{Array.from({ length: puzzle.rows * puzzle.cols }, (_, index) => {
+              <div className="deduction-content"><div className="deduction-scroll"><div className="deduction-grid" style={{ gridTemplateColumns: `repeat(${puzzle.cols}, ${deductionCellSize}px)` }}>{Array.from({ length: puzzle.rows * puzzle.cols }, (_, index) => {
                 const row = Math.floor(index / puzzle.cols);
                 const col = index % puzzle.cols;
                 const key = cell(row, col);
@@ -516,14 +659,14 @@ export default function App() {
                 const confirmed = puzzle.suspects.find((suspect) => suspect.id === placement?.suspectId);
                 const candidateIds = note?.type === 'candidates' ? note.suspectIds : [];
                 const mark = fixedBlocked ? '' : note?.type === 'empty' || note?.type === 'blocked' ? 'X' : confirmed ? suspectLetter(confirmed.id) : candidateIds.length ? <span className="candidate-grid" style={{ gridTemplateColumns: `repeat(${Math.max(3, Math.ceil(Math.sqrt(puzzle.suspects.length)))}, 1fr)` }}>{Array.from({ length: Math.max(9, puzzle.suspects.length) }, (_, slot) => <span className="candidate-slot" key={slot}>{puzzle.suspects[slot] && candidateIds.includes(puzzle.suspects[slot].id) ? suspectLetter(puzzle.suspects[slot].id).toLowerCase() : ''}</span>)}</span> : '';
-                return <button key={key} id={`deduction-${key}`} type="button" className={`deduction-cell ${!isPlayable ? 'outside' : ''} ${fixedBlocked ? 'slash' : ''} ${confirmed ? 'confirmed' : ''} ${candidateIds.length ? 'candidates' : ''} ${activeNoteCell === key ? 'active' : ''}`} style={isPlayable && roomIndex !== undefined ? { backgroundColor: ROOM_COLORS[roomIndex % ROOM_COLORS.length], borderTopWidth: row === 0 || roomByCell.get(cell(row - 1, col)) !== roomIndex ? 2 : 1, borderLeftWidth: col === 0 || roomByCell.get(cell(row, col - 1)) !== roomIndex ? 2 : 1, width: deductionCellSize, height: deductionCellSize } : { width: deductionCellSize, height: deductionCellSize }} disabled={!isPlayable || fixedBlocked} aria-pressed={activeNoteCell === key} onClick={() => { setActiveNoteCell(key); if (noteTool !== 'candidate' && noteTool !== 'confirmed') markCell(key); }} onKeyDown={(event) => { if (!event.repeat && event.key.length === 1 && typePerson(key, event.key)) event.preventDefault(); }} aria-label={`Row ${row + 1}, column ${col + 1}: ${!isPlayable ? 'outside map' : fixedBlocked ? 'blocked by furniture' : confirmed ? `confirmed ${confirmed.name}` : note?.type === 'candidates' ? `possible ${note.suspectIds.map((id) => puzzle.suspects.find((suspect) => suspect.id === id)?.name).join(', ')}` : note?.type === 'empty' || note?.type === 'blocked' ? 'empty' : 'unmarked'}`}>{mark}</button>;
-              })}</div></div>
+                return <button key={key} id={`deduction-${key}`} type="button" className={`deduction-cell ${!isPlayable ? 'outside' : ''} ${fixedBlocked ? 'slash' : ''} ${confirmed ? 'confirmed' : ''} ${candidateIds.length ? 'candidates' : ''} ${activeNoteCell === key ? 'active' : ''}`} style={isPlayable && roomIndex !== undefined ? { backgroundColor: ROOM_COLORS[roomIndex % ROOM_COLORS.length], borderTopWidth: row === 0 || roomByCell.get(cell(row - 1, col)) !== roomIndex ? 2 : 1, borderLeftWidth: col === 0 || roomByCell.get(cell(row, col - 1)) !== roomIndex ? 2 : 1, width: deductionCellSize, height: deductionCellSize } : { width: deductionCellSize, height: deductionCellSize }} disabled={!isPlayable || fixedBlocked} aria-pressed={activeNoteCell === key} onFocus={() => { setActiveNoteCell(key); if (personChoices?.cell !== key) setPersonChoices(null); }} onClick={() => { setActiveNoteCell(key); if (noteTool !== 'candidate' && noteTool !== 'confirmed') markCell(key); }} onKeyDown={(event) => handleNoteKeyDown(event, key)} aria-label={`Row ${row + 1}, column ${col + 1}: ${!isPlayable ? 'outside map' : fixedBlocked ? 'blocked by furniture' : confirmed ? `confirmed ${confirmed.name}` : note?.type === 'candidates' ? `possible ${note.suspectIds.map((id) => puzzle.suspects.find((suspect) => suspect.id === id)?.name).join(', ')}` : note?.type === 'empty' || note?.type === 'blocked' ? 'empty' : 'unmarked'}`}>{mark}</button>;
+              })}</div></div><label className="scratchpad">Scratch notes<textarea aria-label="Scratch notes" placeholder="Jot down ideas, room possibilities, or anything else…" value={scratchNotes} onChange={(event) => setScratchNotes(event.target.value)} /></label></div>
             </section>}
           </section>
 
           <aside className="sidebar">
             {mode === 'edit' ? <>
-              <nav className="sidebar-tabs" aria-label="Case builder steps">{([['setup', 'Setup'], ['rooms', 'Rooms'], ['furniture', 'Furniture'], ['people', 'People & clues'], ['rules', 'Rules']] as const).map(([value, label]) => <button key={value} type="button" className={editorTab === value ? 'active' : ''} aria-current={editorTab === value ? 'step' : undefined} onClick={() => { setEditorTab(value); if (value === 'rooms') setTool('room'); if (value === 'furniture') setTool('object'); }}>{label}</button>)}</nav>
+              <nav className="sidebar-tabs" aria-label="Case builder steps">{([['setup', 'Setup'], ['rooms', 'Rooms'], ['furniture', 'Furniture'], ['people', 'Clues'], ['rules', 'Rules']] as const).map(([value, label]) => <button key={value} type="button" className={editorTab === value ? 'active' : ''} aria-current={editorTab === value ? 'step' : undefined} onClick={() => { setEditorTab(value); if (value === 'rooms') setTool('room'); if (value === 'furniture') setTool('object'); }}>{label}</button>)}</nav>
               {editorTab === 'setup' && <section className="card">
                 <div className="card-title"><h2>Case setup</h2></div>
                 <label>Case title<input value={puzzle.title} onChange={(event) => updatePuzzle({ ...puzzle, title: event.target.value })} /></label>
@@ -567,12 +710,14 @@ export default function App() {
                 </div>)}</div>
                 <button type="button" className="text-button" onClick={addObjectKind}>+ Add custom object</button>
                 {kindById.get(selectedKind)?.onWall && <p className="hint">Highlighted wall edges are placement targets. Windows are limited to outside walls.</p>}
+                {kindById.get(selectedKind)?.art === 'bed' && <div className="bed-direction" role="group" aria-label="Bed direction"><span>Bed extends</span>{([['E', 'Right'], ['S', 'Down'], ['W', 'Left'], ['N', 'Up']] as const).map(([value, label]) => <button key={value} type="button" className={bedDirection === value ? 'selected' : ''} onClick={() => setBedDirection(value)}>{label}</button>)}</div>}
               </section>}
 
               {editorTab === 'people' && <section className="card">
-                <div className="card-title"><h2>People & clues</h2></div>
+                <div className="card-title"><h2>Clues</h2></div>
                 {puzzle.suspects.map((suspect, index) => <div className="person-editor" key={suspect.id}>
-                  <div className="person-header"><span className="person-number">{index + 1}</span><input aria-label={`Person ${index + 1} name`} value={suspect.name} onChange={(event) => updatePuzzle({ ...puzzle, suspects: puzzle.suspects.map((item) => item.id === suspect.id ? { ...item, name: event.target.value } : item) })} /><button type="button" className="icon-button" aria-label={`Remove ${suspect.name}`} onClick={() => removeSuspect(suspect.id)}>×</button></div>
+                  <div className="person-header"><span className="person-number">{index + 1}</span>{suspect.portrait && <img className="person-editor-portrait" src={suspect.portrait} alt={`${suspect.name} portrait`} />}<input aria-label={`Person ${index + 1} name`} value={suspect.name} onChange={(event) => updatePuzzle({ ...puzzle, suspects: puzzle.suspects.map((item) => item.id === suspect.id ? { ...item, name: event.target.value } : item) })} /><button type="button" className="icon-button" aria-label={`Remove ${suspect.name}`} onClick={() => removeSuspect(suspect.id)}>×</button></div>
+                  <label className="portrait-upload">{suspect.portrait ? 'Change portrait' : 'Add portrait'}<input type="file" accept="image/*" aria-label={`${suspect.name} portrait image`} onChange={(event) => { void uploadPortrait(suspect.id, event.target.files?.[0]); event.target.value = ''; }} /></label>
                   <textarea aria-label={`${suspect.name} clue`} placeholder="Their clue, exactly as printed" value={suspect.clue} rows={2} onChange={(event) => updatePuzzle({ ...puzzle, suspects: puzzle.suspects.map((item) => item.id === suspect.id ? { ...item, clue: event.target.value } : item) })} />
                   <label className="checkbox-label"><input type="checkbox" checked={suspect.isVictim} onChange={(event) => updatePuzzle({ ...puzzle, suspects: puzzle.suspects.map((item) => item.id === suspect.id ? { ...item, isVictim: event.target.checked } : item) })} /> Victim</label>
                 </div>)}
@@ -594,12 +739,11 @@ export default function App() {
                 <div className="secondary-actions"><button type="button" onClick={downloadPuzzle}>Export JSON</button><label className="file-button">Import JSON<input type="file" accept="application/json,.json" onChange={(event) => { void importPuzzle(event.target.files?.[0]); event.target.value = ''; }} /></label><button type="button" onClick={newCase}>New case</button></div>
               </section>
             </> : <>
-              <nav className="sidebar-tabs play-tabs" aria-label="Play case panels">{([['clues', 'Clues'], ['people', 'People'], ['checks', 'Checks']] as const).map(([value, label]) => <button key={value} type="button" className={playTab === value ? 'active' : ''} onClick={() => setPlayTab(value)}>{label}</button>)}</nav>
-              {playTab === 'people' && <section className="card"><div className="card-title"><h2>People</h2></div><p className="hint">Type these letters into an active deduction cell. Check a person once you have considered every possible spot.</p><div className="suspect-list">{puzzle.suspects.map((suspect) => {
+              <nav className="sidebar-tabs play-tabs" aria-label="Play case panels">{([['clues', 'Clues'], ['checks', 'Checks']] as const).map(([value, label]) => <button key={value} type="button" className={playTab === value ? 'active' : ''} onClick={() => setPlayTab(value)}>{label}</button>)}</nav>
+              {playTab === 'clues' && <section className="card"><div className="card-title"><h2>Clues</h2></div>{puzzle.caseClues.filter(Boolean).map((clue, index) => <p className="clue" key={index}>{clue}</p>)}<p className="hint">Check a person once you have considered every possible spot.</p><div className="person-clues">{puzzle.suspects.map((suspect) => {
                 const placed = placements.find((item) => item.suspectId === suspect.id);
-                return <div className="suspect-item" key={suspect.id}><div className="suspect-summary"><span className="suspect-avatar">{suspectLetter(suspect.id)}</span><span><strong>{suspect.name}</strong><small>{placed ? `Row ${coordinates(placed.cell)[0] + 1}, column ${coordinates(placed.cell)[1] + 1}` : 'Not placed'}</small></span></div><label className="checkbox-label considered-check"><input type="checkbox" checked={consideredSuspectIds.includes(suspect.id)} onChange={() => toggleConsidered(suspect.id)} aria-label={`${suspect.name} fully considered`} />✓</label>{placed && <button type="button" className="icon-button" aria-label={`Remove ${suspect.name} from board`} onClick={() => setBranchWorkspace((current) => changeDeduction(current, (state) => ({ ...state, placements: state.placements.filter((item) => item.suspectId !== suspect.id) })))}>×</button>}</div>;
-              })}</div></section>}
-              {playTab === 'clues' && <section className="card"><div className="card-title"><h2>Clues</h2></div>{puzzle.caseClues.filter(Boolean).map((clue, index) => <p className="clue" key={index}>{clue}</p>)}{puzzle.suspects.filter((suspect) => suspect.clue.trim()).map((suspect) => <p className="clue" key={suspect.id}><strong>{suspect.name}:</strong> {suspect.clue}</p>)}{!puzzle.caseClues.some(Boolean) && !puzzle.suspects.some((suspect) => suspect.clue.trim()) && <p className="empty-note">No clues entered yet.</p>}</section>}
+                return <div className="person-clue" key={suspect.id}><div className="person-clue-heading">{suspect.portrait ? <img className="person-portrait" src={suspect.portrait} alt={`${suspect.name} portrait`} /> : <span className="suspect-avatar">{suspectLetter(suspect.id)}</span>}<div className="person-clue-copy"><strong>{suspectLetter(suspect.id)} · {suspect.name}{suspect.isVictim ? ' · Victim' : ''}</strong><p>{suspect.clue.trim() || 'No clue entered.'}</p>{placed && <small>Placed at row {coordinates(placed.cell)[0] + 1}, column {coordinates(placed.cell)[1] + 1}</small>}</div><label className="checkbox-label considered-check"><input type="checkbox" checked={consideredSuspectIds.includes(suspect.id)} onChange={() => toggleConsidered(suspect.id)} aria-label={`${suspect.name} fully considered`} /></label></div>{placed && <button type="button" className="remove-placement" onClick={() => setBranchWorkspace((current) => changeDeduction(current, (state) => ({ ...state, placements: state.placements.filter((item) => item.suspectId !== suspect.id) })))}>Remove from board</button>}</div>;
+              })}</div>{!puzzle.caseClues.some(Boolean) && puzzle.suspects.length === 0 && <p className="empty-note">No clues entered yet.</p>}</section>}
               {playTab === 'checks' && playProblems.length > 0 && <section className="card issue-card" role="status"><h2>Check these placements</h2><ul>{playProblems.map((problem) => <li key={problem}>{problem}</li>)}</ul></section>}
               {playTab === 'checks' && playProblems.length === 0 && <section className="card good-card"><strong>No placement conflicts</strong><p>Clue text is for manual deduction in this first version.</p></section>}
               <button type="button" className="text-button back-button" onClick={() => setMode('edit')}>← Edit this case</button>
