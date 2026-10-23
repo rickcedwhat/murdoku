@@ -75,7 +75,17 @@ function historyLane(point: HistoryPoint, pointById: Map<string, HistoryPoint>, 
   return Math.max(0, branches.findIndex((branch) => branch.id === point.branchId));
 }
 
-function historyPaths(entries: HistoryEntry[], points: HistoryPoint[], branches: BranchWorkspace['branches']): string[] {
+function historyRowCenters(entries: HistoryEntry[]): number[] {
+  let top = 0;
+  return entries.map((entry) => {
+    const height = entry.kind === 'fold' ? 26 : 39;
+    const center = top + height / 2;
+    top += height;
+    return center;
+  });
+}
+
+function historyPaths(entries: HistoryEntry[], points: HistoryPoint[], branches: BranchWorkspace['branches'], rowCenters: number[]): string[] {
   const pointById = new Map(points.map((point) => [point.id, point]));
   const visible = new Map<string, number>();
   entries.forEach((entry, index) => {
@@ -84,7 +94,7 @@ function historyPaths(entries: HistoryEntry[], points: HistoryPoint[], branches:
   });
   const lane = (branchId: string) => Math.max(0, branches.findIndex((branch) => branch.id === branchId));
   const laneX = (branchId: string) => 12 + lane(branchId) * 23;
-  const rowY = (index: number) => index * 39 + 20;
+  const rowY = (index: number) => rowCenters[index];
   const paths = new Set<string>();
   entries.forEach((entry, index) => {
     if (entry.kind === 'fold' && entry.expanded) return;
@@ -261,7 +271,9 @@ export default function App() {
   const viewPoint = branchWorkspace.points?.find((point) => point.id === viewPointId);
   const history = useMemo(() => historyEntries(branchWorkspace.points ?? [], expandedHistory), [branchWorkspace.points, expandedHistory]);
   const historyPointsById = useMemo(() => new Map((branchWorkspace.points ?? []).map((point) => [point.id, point])), [branchWorkspace.points]);
-  const historyLines = useMemo(() => historyPaths(history, branchWorkspace.points ?? [], branchWorkspace.branches), [history, branchWorkspace.points, branchWorkspace.branches]);
+  const historyCenters = useMemo(() => historyRowCenters(history), [history]);
+  const historyLines = useMemo(() => historyPaths(history, branchWorkspace.points ?? [], branchWorkspace.branches, historyCenters), [history, branchWorkspace.points, branchWorkspace.branches, historyCenters]);
+  const historyHeight = history.reduce((height, entry) => height + (entry.kind === 'fold' ? 26 : 39), 0);
   const viewedTip = viewPoint && branchWorkspace.branches.find((branch) => branch.headPointId === viewPoint.id);
   const { placements, notes } = viewPoint?.kind === 'start' ? viewPoint.state : viewedTip?.present ?? viewPoint?.state ?? activeBranch.present;
   const placementsByCell = useMemo(() => new Map(placements.map((placement) => [placement.cell, placement])), [placements]);
@@ -781,7 +793,7 @@ export default function App() {
               <div className="deduction-heading"><div><p className="eyebrow">DEDUCTION GRID</p><h2>Your notes</h2></div><div className="diagram-heading-actions"><button type="button" className="diagram-map-toggle" aria-pressed={overlayPinned} onClick={() => setOverlayPinned((current) => !current)}>{overlayPinned ? 'Hide map' : 'Show map'}</button><span className="dimension-badge">{placements.length} confirmed</span></div></div>
               <div className="branch-panel" aria-label="History">
                 <div className="branch-heading"><strong>History</strong><span>Newest at top · Start at bottom</span></div>
-                <div className="history-graph" role="list" aria-label="Deduction history"><div className="history-track"><svg className="history-lines" aria-hidden="true" width="100%" height={history.length * 39}><g fill="none" stroke="#a9beb2" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{historyLines.map((path) => <path key={path} d={path} />)}</g></svg>{history.map((entry) => {
+                <div className="history-graph" role="list" aria-label="Deduction history"><div className="history-track"><svg className="history-lines" aria-hidden="true" width="100%" height={historyHeight}><g fill="none" stroke="#a9beb2" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{historyLines.map((path) => <path key={path} d={path} />)}</g></svg>{history.map((entry) => {
                   const lane = entry.kind === 'point' ? historyLane(entry.point, historyPointsById, branchWorkspace.branches) : Math.max(0, branchWorkspace.branches.findIndex((branch) => branch.id === entry.branchId));
                   if (entry.kind === 'fold') return <div className="history-row history-fold" role="listitem" key={entry.id} style={{ '--lane-offset': `${lane * 23}px` } as CSSProperties}><span className="history-rail" aria-hidden="true" /><button type="button" aria-expanded={entry.expanded} onClick={() => setExpandedHistory((current) => entry.expanded ? current.filter((id) => id !== entry.id) : [...current, entry.id])}>{entry.expanded ? 'Show fewer points' : `Show ${entry.count} earlier points`}</button></div>;
                   const point = entry.point;
