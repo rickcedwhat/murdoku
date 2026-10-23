@@ -12,6 +12,17 @@ describe('puzzle rules', () => {
     const split = assignCellToRoom({ ...puzzle, rooms: [...puzzle.rooms, { id: 'other', name: 'Other', cells: [] }] }, cell(2, 2), 'other');
     expect(placeObject(split, 'bed', cell(2, 1), undefined, 'E')).toBe(split);
   });
+  it('migrates older one-cell beds without overlapping furniture', () => {
+    const base = newPuzzle();
+    const legacyBed = { id: 'old-bed', kindId: 'bed', cell: cell(0, 0) };
+    const nextToTable = parsePuzzle({ ...base, objects: [legacyBed, { id: 'table', kindId: 'table', cell: cell(0, 1) }] });
+    expect(nextToTable.objects[0].bedDirection).toBe('S');
+    expect(objectCells(nextToTable, nextToTable.objects[0])).toEqual([cell(0, 0), cell(1, 0)]);
+    const surrounded = parsePuzzle({ ...base, objects: [legacyBed, { id: 'east', kindId: 'table', cell: cell(0, 1) }, { id: 'south', kindId: 'table', cell: cell(1, 0) }] });
+    expect(surrounded.objects[0].bedDirection).toBeUndefined();
+    expect(objectCells(surrounded, surrounded.objects[0])).toEqual([cell(0, 0)]);
+    expect(validatePuzzle(surrounded)).toEqual([]);
+  });
   it('keeps an existing case when an older save has a fractional rule count', () => {
     const puzzle = newPuzzle();
     puzzle.title = 'Saved case';

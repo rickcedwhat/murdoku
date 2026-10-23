@@ -1,9 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { activeHypothesis, changeDeduction, newBranchWorkspace, undoDeduction } from './branches';
-import { fillLineWithXs, newSavedCase, parseCaseLibrary, upsertCase } from './cases';
+import { fillLineWithXs, importTargetsActiveCase, newSavedCase, parseCaseLibrary, upsertCase } from './cases';
 import { cell, newPuzzle, placeObject } from './puzzle';
 
 describe('case library', () => {
+  it('does not replace an active case just because an import has the same title', () => {
+    const active = newPuzzle();
+    const imported = { ...newPuzzle(), title: active.title };
+    expect(importTargetsActiveCase(imported, active.id)).toBe(false);
+    expect(importTargetsActiveCase({ ...imported, id: active.id }, active.id)).toBe(true);
+  });
+
   it('migrates a single browser save and retains it alongside a new case', () => {
     const puzzle = newPuzzle();
     puzzle.title = 'Old case';

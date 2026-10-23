@@ -85,6 +85,10 @@ export function upsertCase(cases: SavedCase[], saved: SavedCase): SavedCase[] {
   return [saved, ...cases.filter((entry) => entry.puzzle.id !== saved.puzzle.id)];
 }
 
+export function importTargetsActiveCase(imported: Puzzle, activeCaseId: string | null): boolean {
+  return activeCaseId !== null && imported.id === activeCaseId;
+}
+
 export function fillLineWithXs(workspace: BranchWorkspace, puzzle: Puzzle, confirmedCell: Cell, axis: 'row' | 'column'): BranchWorkspace {
   const deduction = workspace.branches.find((branch) => branch.id === workspace.activeId)?.present;
   const placement = deduction?.placements.find((item) => item.cell === confirmedCell);

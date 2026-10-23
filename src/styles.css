@@ -77,7 +77,9 @@
 /* Portraits make appearance clues visible beside the written hint. */
 .person-editor-portrait{width:42px;height:42px;object-fit:cover;border-radius:5px;border:1px solid #d6d9d4;flex:none}
 .portrait-upload{display:inline-flex!important;align-items:center!important;width:max-content;color:#315f4d!important;font-size:11px!important;font-weight:800!important;text-transform:none!important;letter-spacing:0!important;cursor:pointer;margin:0 0 9px 30px}
-.portrait-upload input{display:none}
+.portrait-upload{position:relative}
+.portrait-upload input{position:absolute;width:1px;height:1px;padding:0;margin:0;opacity:0;overflow:hidden;clip-path:inset(50%)}
+.portrait-upload:focus-within{outline:3px solid #d5893d;outline-offset:3px;border-radius:3px}
 .person-clues{display:flex;flex-direction:column;gap:9px;margin-top:12px}
 .person-clue{border:1px solid #e0e5e2;background:#fbfcfa;border-radius:10px;padding:9px}
 .person-clue-heading{display:flex;align-items:flex-start;gap:10px}
@@ -98,4 +100,6 @@
 .scratchpad textarea{width:100%;min-height:240px;resize:vertical;border:1px solid #cddbd2;border-radius:9px;background:#fffdf6;padding:12px;color:#253b37;font-size:13px;font-weight:400;line-height:1.5}
 .scratchpad textarea:focus-visible{outline:3px solid #d5893d;outline-offset:2px}
 @media (max-width:1250px){.deduction-content{grid-template-columns:minmax(0,1fr)}.scratchpad textarea{min-height:130px}}
+.person-choices{display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin:0 0 12px;padding:10px;border:1px solid #d8c9a9;border-radius:9px;background:#fff9ec;color:#544733;font-size:11px}
+.person-choices>span:first-child{font-weight:800;margin-right:4px}.person-choices button{border:1px solid #cfbc94;border-radius:6px;background:#fff;color:#344c43;padding:6px 9px;font-size:11px;font-weight:750}.person-choices .choice-hint{color:#88765e}
 .remove-placement{border:0;background:none;color:#856247;font-size:10px;padding:4px 0 0 74px;cursor:pointer}
