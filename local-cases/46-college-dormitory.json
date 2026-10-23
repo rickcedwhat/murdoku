@@ -1,0 +1,557 @@
+{
+  "version": 2,
+  "appearanceVersion": 4,
+  "id": "book-46-college-dormitory",
+  "title": "46. College Dormitory",
+  "rows": 9,
+  "cols": 9,
+  "playable": [
+    "0,0",
+    "0,1",
+    "0,2",
+    "0,3",
+    "0,4",
+    "0,5",
+    "0,6",
+    "0,7",
+    "0,8",
+    "1,0",
+    "1,1",
+    "1,2",
+    "1,3",
+    "1,4",
+    "1,5",
+    "1,6",
+    "1,7",
+    "1,8",
+    "2,0",
+    "2,1",
+    "2,2",
+    "2,3",
+    "2,4",
+    "2,5",
+    "2,6",
+    "2,7",
+    "2,8",
+    "3,0",
+    "3,1",
+    "3,2",
+    "3,3",
+    "3,4",
+    "3,5",
+    "3,6",
+    "3,7",
+    "3,8",
+    "4,0",
+    "4,1",
+    "4,2",
+    "4,3",
+    "4,4",
+    "4,5",
+    "4,6",
+    "4,7",
+    "4,8",
+    "5,0",
+    "5,1",
+    "5,2",
+    "5,3",
+    "5,4",
+    "5,5",
+    "5,6",
+    "5,7",
+    "5,8",
+    "6,0",
+    "6,1",
+    "6,2",
+    "6,3",
+    "6,4",
+    "6,5",
+    "6,6",
+    "6,7",
+    "6,8",
+    "7,0",
+    "7,1",
+    "7,2",
+    "7,3",
+    "7,4",
+    "7,5",
+    "7,6",
+    "7,7",
+    "7,8",
+    "8,0",
+    "8,1",
+    "8,2",
+    "8,3",
+    "8,4",
+    "8,5",
+    "8,6",
+    "8,7",
+    "8,8"
+  ],
+  "rooms": [
+    {
+      "id": "bedroom-1",
+      "name": "Bedroom 1",
+      "cells": [
+        "0,0",
+        "0,1",
+        "0,2",
+        "1,0",
+        "1,1",
+        "1,2",
+        "2,0",
+        "2,1",
+        "2,2",
+        "3,0",
+        "3,1",
+        "3,2"
+      ]
+    },
+    {
+      "id": "bedroom-2",
+      "name": "Bedroom 2",
+      "cells": [
+        "0,3",
+        "0,4",
+        "0,5",
+        "1,3",
+        "1,4",
+        "1,5",
+        "2,3",
+        "2,4",
+        "2,5",
+        "3,3",
+        "3,4",
+        "3,5"
+      ]
+    },
+    {
+      "id": "bedroom-3",
+      "name": "Bedroom 3",
+      "cells": [
+        "0,6",
+        "0,7",
+        "0,8",
+        "1,6",
+        "1,7",
+        "1,8",
+        "2,6",
+        "2,7",
+        "2,8",
+        "3,6",
+        "3,7",
+        "3,8"
+      ]
+    },
+    {
+      "id": "hallway",
+      "name": "Hallway",
+      "cells": [
+        "4,0",
+        "4,1",
+        "4,2",
+        "4,3",
+        "4,4",
+        "4,5",
+        "4,6",
+        "4,7",
+        "4,8",
+        "5,0",
+        "5,1",
+        "5,2",
+        "5,3",
+        "5,4",
+        "5,5",
+        "5,6",
+        "5,7",
+        "5,8",
+        "6,0",
+        "6,1",
+        "7,0",
+        "7,1",
+        "8,0",
+        "8,1"
+      ]
+    },
+    {
+      "id": "restroom",
+      "name": "Restroom",
+      "cells": [
+        "6,2",
+        "6,3",
+        "6,4",
+        "6,5",
+        "7,2",
+        "7,3",
+        "7,4",
+        "7,5",
+        "8,2",
+        "8,3",
+        "8,4",
+        "8,5"
+      ]
+    },
+    {
+      "id": "kitchen",
+      "name": "Kitchen",
+      "cells": [
+        "6,6",
+        "6,7",
+        "6,8",
+        "7,6",
+        "7,7",
+        "7,8",
+        "8,6",
+        "8,7",
+        "8,8"
+      ]
+    }
+  ],
+  "objectKinds": [
+    {
+      "id": "chair",
+      "name": "Chair",
+      "canOccupy": true,
+      "onWall": false,
+      "outsideOnly": false,
+      "art": "chair"
+    },
+    {
+      "id": "bed",
+      "name": "Bed",
+      "canOccupy": true,
+      "onWall": false,
+      "outsideOnly": false,
+      "art": "bed"
+    },
+    {
+      "id": "carpet",
+      "name": "Carpet",
+      "canOccupy": true,
+      "onWall": false,
+      "outsideOnly": false,
+      "art": "carpet"
+    },
+    {
+      "id": "desk",
+      "name": "Desk",
+      "canOccupy": false,
+      "onWall": false,
+      "outsideOnly": false,
+      "art": "desk"
+    },
+    {
+      "id": "table",
+      "name": "Table",
+      "canOccupy": false,
+      "onWall": false,
+      "outsideOnly": false,
+      "art": "table"
+    },
+    {
+      "id": "tv",
+      "name": "TV",
+      "canOccupy": false,
+      "onWall": false,
+      "outsideOnly": false,
+      "art": "tv"
+    },
+    {
+      "id": "plant",
+      "name": "Plant",
+      "canOccupy": false,
+      "onWall": false,
+      "outsideOnly": false,
+      "art": "plant"
+    },
+    {
+      "id": "bookcase",
+      "name": "Bookcase",
+      "canOccupy": false,
+      "onWall": false,
+      "outsideOnly": false,
+      "art": "bookcase"
+    },
+    {
+      "id": "window",
+      "name": "Window",
+      "canOccupy": true,
+      "onWall": true,
+      "outsideOnly": true,
+      "art": "bar"
+    }
+  ],
+  "objects": [
+    {
+      "id": "object-01",
+      "kindId": "table",
+      "cell": "0,1"
+    },
+    {
+      "id": "object-02",
+      "kindId": "table",
+      "cell": "1,1"
+    },
+    {
+      "id": "object-03",
+      "kindId": "plant",
+      "cell": "0,2"
+    },
+    {
+      "id": "object-04",
+      "kindId": "chair",
+      "cell": "1,2"
+    },
+    {
+      "id": "object-05",
+      "kindId": "bookcase",
+      "cell": "2,1"
+    },
+    {
+      "id": "object-06",
+      "kindId": "carpet",
+      "cell": "3,1"
+    },
+    {
+      "id": "object-07",
+      "kindId": "carpet",
+      "cell": "3,2"
+    },
+    {
+      "id": "object-08",
+      "kindId": "bed",
+      "cell": "1,0",
+      "bedDirection": "S"
+    },
+    {
+      "id": "object-09",
+      "kindId": "tv",
+      "cell": "0,3"
+    },
+    {
+      "id": "object-10",
+      "kindId": "bookcase",
+      "cell": "0,5"
+    },
+    {
+      "id": "object-11",
+      "kindId": "table",
+      "cell": "1,5"
+    },
+    {
+      "id": "object-12",
+      "kindId": "bed",
+      "cell": "1,4",
+      "bedDirection": "S"
+    },
+    {
+      "id": "object-13",
+      "kindId": "tv",
+      "cell": "0,8"
+    },
+    {
+      "id": "object-14",
+      "kindId": "bookcase",
+      "cell": "1,7"
+    },
+    {
+      "id": "object-15",
+      "kindId": "carpet",
+      "cell": "3,7"
+    },
+    {
+      "id": "object-16",
+      "kindId": "carpet",
+      "cell": "3,8"
+    },
+    {
+      "id": "object-17",
+      "kindId": "bed",
+      "cell": "1,8",
+      "bedDirection": "S"
+    },
+    {
+      "id": "object-18",
+      "kindId": "table",
+      "cell": "4,1"
+    },
+    {
+      "id": "object-19",
+      "kindId": "chair",
+      "cell": "4,2"
+    },
+    {
+      "id": "object-20",
+      "kindId": "carpet",
+      "cell": "4,3"
+    },
+    {
+      "id": "object-21",
+      "kindId": "carpet",
+      "cell": "4,4"
+    },
+    {
+      "id": "object-22",
+      "kindId": "plant",
+      "cell": "4,5"
+    },
+    {
+      "id": "object-23",
+      "kindId": "carpet",
+      "cell": "4,7"
+    },
+    {
+      "id": "object-24",
+      "kindId": "carpet",
+      "cell": "4,8"
+    },
+    {
+      "id": "object-25",
+      "kindId": "carpet",
+      "cell": "6,0"
+    },
+    {
+      "id": "object-26",
+      "kindId": "carpet",
+      "cell": "7,0"
+    },
+    {
+      "id": "object-27",
+      "kindId": "window",
+      "cell": "5,0",
+      "side": "W"
+    },
+    {
+      "id": "object-28",
+      "kindId": "window",
+      "cell": "6,0",
+      "side": "W"
+    },
+    {
+      "id": "object-29",
+      "kindId": "window",
+      "cell": "8,0",
+      "side": "W"
+    },
+    {
+      "id": "object-30",
+      "kindId": "chair",
+      "cell": "6,2"
+    },
+    {
+      "id": "object-31",
+      "kindId": "chair",
+      "cell": "6,5"
+    },
+    {
+      "id": "object-32",
+      "kindId": "plant",
+      "cell": "7,2"
+    },
+    {
+      "id": "object-33",
+      "kindId": "table",
+      "cell": "7,5"
+    },
+    {
+      "id": "object-34",
+      "kindId": "chair",
+      "cell": "8,2"
+    },
+    {
+      "id": "object-35",
+      "kindId": "chair",
+      "cell": "8,5"
+    },
+    {
+      "id": "object-36",
+      "kindId": "table",
+      "cell": "6,7"
+    },
+    {
+      "id": "object-37",
+      "kindId": "table",
+      "cell": "6,8"
+    },
+    {
+      "id": "object-38",
+      "kindId": "table",
+      "cell": "7,7"
+    },
+    {
+      "id": "object-39",
+      "kindId": "table",
+      "cell": "7,8"
+    }
+  ],
+  "walls": [],
+  "suspects": [
+    {
+      "id": "alan",
+      "name": "Alan",
+      "clue": "He was alone in a Bedroom.",
+      "isVictim": false,
+      "portrait": "/people/college-dormitory/alan.jpg"
+    },
+    {
+      "id": "ben",
+      "name": "Ben",
+      "clue": "He was on a bed.",
+      "isVictim": false,
+      "portrait": "/people/college-dormitory/ben.jpg"
+    },
+    {
+      "id": "carmen",
+      "name": "Carmen",
+      "clue": "She was the only person sitting in a chair.",
+      "isVictim": false,
+      "portrait": "/people/college-dormitory/carmen.jpg"
+    },
+    {
+      "id": "dale",
+      "name": "Dale",
+      "clue": "He was the only person on a carpet.",
+      "isVictim": false,
+      "portrait": "/people/college-dormitory/dale.jpg"
+    },
+    {
+      "id": "eowyn",
+      "name": "Eowyn",
+      "clue": "She was north of Hope. They were in the same room.",
+      "isVictim": false,
+      "portrait": "/people/college-dormitory/eowyn.jpg"
+    },
+    {
+      "id": "fletcher",
+      "name": "Fletcher",
+      "clue": "He was beside a table.",
+      "isVictim": false,
+      "portrait": "/people/college-dormitory/fletcher.jpg"
+    },
+    {
+      "id": "grace",
+      "name": "Grace",
+      "clue": "Someone else was in front of a window in her room.",
+      "isVictim": false,
+      "portrait": "/people/college-dormitory/grace.jpg"
+    },
+    {
+      "id": "hope",
+      "name": "Hope",
+      "clue": "She was not beside a wall or a window.",
+      "isVictim": false,
+      "portrait": "/people/college-dormitory/hope.jpg"
+    },
+    {
+      "id": "vince",
+      "name": "Vince",
+      "clue": "The victim. He was alone with the murderer.",
+      "isVictim": true,
+      "portrait": "/people/college-dormitory/vince.jpg"
+    }
+  ],
+  "caseClues": [
+    "There was a different number of people in each bedroom."
+  ],
+  "rules": {}
+}

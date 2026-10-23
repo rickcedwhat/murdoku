@@ -22,6 +22,7 @@ import { ObjectMark } from './ObjectMark';
 import { activeHypothesis, applyHypothesisToMain, changeDeduction, createHypothesis, discardHypothesis, newBranchWorkspace, reconcileBranches, redoDeduction, renameHypothesis, restoreCheckpoint, saveCheckpoint, switchHypothesis, undoDeduction, type BranchWorkspace } from './branches';
 import { CASE_LIBRARY_KEY, LEGACY_CASE_KEY, fillLineWithXs, importTargetsActiveCase, newSavedCase, parseCaseLibrary, upsertCase, type SavedCase } from './cases';
 import { suspectLetter as letterForSuspect, suspectsForInitial } from './suspectLetters';
+import collegeDormitoryJson from '../local-cases/46-college-dormitory.json';
 
 type Mode = 'edit' | 'play';
 type Tool = 'outline' | 'room' | 'object' | 'erase';
@@ -31,7 +32,12 @@ const ROOM_COLORS = ['#d9e9df', '#f5e5cd', '#dce7f2', '#eadff0', '#f4deda', '#e8
 
 function loadCases(): SavedCase[] {
   try {
-    return parseCaseLibrary(localStorage.getItem(CASE_LIBRARY_KEY), localStorage.getItem(LEGACY_CASE_KEY));
+    const existing = parseCaseLibrary(localStorage.getItem(CASE_LIBRARY_KEY), localStorage.getItem(LEGACY_CASE_KEY));
+    const collegeDormitory = parsePuzzle(collegeDormitoryJson);
+    if (existing.some((saved) => saved.puzzle.id === collegeDormitory.id)) return existing;
+    const cases = [newSavedCase(collegeDormitory, 'play'), ...existing];
+    try { localStorage.setItem(CASE_LIBRARY_KEY, JSON.stringify({ version: 1, cases })); } catch { /* Keep the case available in memory. */ }
+    return cases;
   } catch {
     return [];
   }
