@@ -67,6 +67,14 @@ function historyEntries(points: HistoryPoint[], expandedIds: string[]): HistoryE
   return entries;
 }
 
+function historyLane(point: HistoryPoint, pointById: Map<string, HistoryPoint>, branches: BranchWorkspace['branches']): number {
+  if (point.kind === 'branch') {
+    const parent = point.parentId && pointById.get(point.parentId);
+    if (parent) return historyLane(parent, pointById, branches);
+  }
+  return Math.max(0, branches.findIndex((branch) => branch.id === point.branchId));
+}
+
 function historyPaths(entries: HistoryEntry[], points: HistoryPoint[], branches: BranchWorkspace['branches']): string[] {
   const pointById = new Map(points.map((point) => [point.id, point]));
   const visible = new Map<string, number>();
@@ -74,7 +82,8 @@ function historyPaths(entries: HistoryEntry[], points: HistoryPoint[], branches:
     if (entry.kind === 'point') visible.set(entry.point.id, index);
     else if (!entry.expanded) entry.hiddenIds.forEach((id) => visible.set(id, index));
   });
-  const laneX = (branchId: string) => 12 + Math.max(0, branches.findIndex((branch) => branch.id === branchId)) * 23;
+  const lane = (branchId: string) => Math.max(0, branches.findIndex((branch) => branch.id === branchId));
+  const laneX = (branchId: string) => 12 + lane(branchId) * 23;
   const rowY = (index: number) => index * 39 + 20;
   const paths = new Set<string>();
   entries.forEach((entry, index) => {
@@ -86,11 +95,12 @@ function historyPaths(entries: HistoryEntry[], points: HistoryPoint[], branches:
     if (parentIndex === index) return;
     const branchId = entry.kind === 'point' ? entry.point.branchId : entry.branchId;
     const parentBranchId = pointById.get(parentId)?.branchId ?? branchId;
-    const x = laneX(branchId);
-    const parentX = laneX(parentBranchId);
+    const x = entry.kind === 'point' ? 12 + historyLane(entry.point, pointById, branches) * 23 : laneX(branchId);
+    const parent = pointById.get(parentId);
+    const parentX = parent ? 12 + historyLane(parent, pointById, branches) * 23 : laneX(parentBranchId);
     const y = rowY(index);
     const parentY = rowY(parentIndex);
-    paths.add(x === parentX ? `M ${x} ${y} V ${parentY}` : `M ${x} ${y} V ${parentY} H ${parentX}`);
+    paths.add(x === parentX ? `M ${x} ${y} V ${parentY}` : `M ${x} ${y} L ${parentX} ${parentY}`);
   });
   return [...paths];
 }
@@ -250,6 +260,7 @@ export default function App() {
   const activeBranch = activeHypothesis(branchWorkspace);
   const viewPoint = branchWorkspace.points?.find((point) => point.id === viewPointId);
   const history = useMemo(() => historyEntries(branchWorkspace.points ?? [], expandedHistory), [branchWorkspace.points, expandedHistory]);
+  const historyPointsById = useMemo(() => new Map((branchWorkspace.points ?? []).map((point) => [point.id, point])), [branchWorkspace.points]);
   const historyLines = useMemo(() => historyPaths(history, branchWorkspace.points ?? [], branchWorkspace.branches), [history, branchWorkspace.points, branchWorkspace.branches]);
   const viewedTip = viewPoint && branchWorkspace.branches.find((branch) => branch.headPointId === viewPoint.id);
   const { placements, notes } = viewPoint?.kind === 'start' ? viewPoint.state : viewedTip?.present ?? viewPoint?.state ?? activeBranch.present;
@@ -771,15 +782,16 @@ export default function App() {
               <div className="branch-panel" aria-label="History">
                 <div className="branch-heading"><strong>History</strong><span>Newest at top · Start at bottom</span></div>
                 <div className="history-graph" role="list" aria-label="Deduction history"><div className="history-track"><svg className="history-lines" aria-hidden="true" width="100%" height={history.length * 39}><g fill="none" stroke="#a9beb2" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{historyLines.map((path) => <path key={path} d={path} />)}</g></svg>{history.map((entry) => {
-                  const lane = Math.max(0, branchWorkspace.branches.findIndex((branch) => branch.id === (entry.kind === 'point' ? entry.point.branchId : entry.branchId)));
+                  const lane = entry.kind === 'point' ? historyLane(entry.point, historyPointsById, branchWorkspace.branches) : Math.max(0, branchWorkspace.branches.findIndex((branch) => branch.id === entry.branchId));
                   if (entry.kind === 'fold') return <div className="history-row history-fold" role="listitem" key={entry.id} style={{ '--lane-offset': `${lane * 23}px` } as CSSProperties}><span className="history-rail" aria-hidden="true" /><button type="button" aria-expanded={entry.expanded} onClick={() => setExpandedHistory((current) => entry.expanded ? current.filter((id) => id !== entry.id) : [...current, entry.id])}>{entry.expanded ? 'Show fewer points' : `Show ${entry.count} earlier points`}</button></div>;
                   const point = entry.point;
                   const person = puzzle.suspects.find((suspect) => suspect.id === point.suspectId);
-                  const label = point.kind === 'start' ? 'Start · empty board' : point.kind === 'confirmed' ? person?.name ?? 'Person confirmed' : point.name || 'Checkpoint';
+                  const label = point.kind === 'start' ? 'Start · empty board' : point.kind === 'confirmed' ? person?.name ?? 'Person confirmed' : point.kind === 'branch' ? 'Branch point' : point.name || 'Checkpoint';
+                  const parentBranch = point.parentId && historyPointsById.get(point.parentId)?.kind === 'branch' ? historyPointsById.get(point.parentId) : undefined;
                   const tip = branchWorkspace.branches.some((branch) => branch.headPointId === point.id);
-                  return <div className={`history-row ${viewPointId === point.id ? 'viewing' : ''} ${!viewPoint && activeBranch.headPointId === point.id ? 'current' : ''}`} role="listitem" key={point.id} style={{ '--lane-offset': `${lane * 23}px` } as CSSProperties}><span className={`history-rail ${point.kind}`} aria-hidden="true" /><button type="button" onClick={() => { setViewPointId(point.id); setActiveNoteCell(null); setPersonChoices(null); }}><strong>{label}</strong><small>{point.kind === 'start' ? 'Beginning' : tip ? 'Branch tip' : point.kind === 'confirmed' ? 'Confirmed' : point.kind === 'branch' ? 'Branch' : 'Checkpoint'}{!viewPoint && activeBranch.headPointId === point.id ? ' · current' : ''}</small></button></div>;
+                  return <div className={`history-row ${viewPointId === point.id ? 'viewing' : ''} ${!viewPoint && activeBranch.headPointId === point.id ? 'current' : ''}`} role="listitem" key={point.id} style={{ '--lane-offset': `${lane * 23}px` } as CSSProperties}><span className={`history-rail ${point.kind}`} aria-hidden="true" /><button type="button" onClick={() => { setViewPointId(point.id); setActiveNoteCell(null); setPersonChoices(null); }}><span className="history-title"><strong>{label}</strong>{parentBranch && <span className="history-branch-tag">{parentBranch.name}</span>}</span><small>{point.kind === 'start' ? 'Beginning' : tip ? 'Branch tip' : point.kind === 'confirmed' ? 'Confirmed' : point.kind === 'branch' ? 'Fork' : 'Checkpoint'}{!viewPoint && activeBranch.headPointId === point.id ? ' · current' : ''}</small></button></div>;
                 })}</div></div>
-                {viewPoint ? <div className="history-preview"><p>Viewing {viewPoint.kind === 'confirmed' ? puzzle.suspects.find((suspect) => suspect.id === viewPoint.suspectId)?.name ?? 'confirmation' : viewPoint.name ?? 'Start'} · read-only</p><div className="branch-actions">{viewedTip && <button type="button" onClick={() => { setBranchWorkspace((current) => continueFromPoint(current, viewPoint.id)); setViewPointId(null); }}>Continue on {viewedTip.name}</button>}<button type="button" onClick={() => { setBranchWorkspace((current) => createHypothesis(current, viewPoint.consideredSuspectIds ?? consideredSuspectIds, viewPoint.id)); if (viewPoint.consideredSuspectIds) setConsideredSuspectIds([...viewPoint.consideredSuspectIds]); setViewPointId(null); }}>Branch from here</button><button type="button" onClick={() => setViewPointId(null)}>Cancel preview</button></div></div> : <p className="history-preview">Select a point to inspect it or switch branches.</p>}
+                {viewPoint ? <div className="history-preview"><p>Viewing {viewPoint.kind === 'confirmed' ? puzzle.suspects.find((suspect) => suspect.id === viewPoint.suspectId)?.name ?? 'confirmation' : viewPoint.kind === 'branch' ? 'branch point' : viewPoint.name ?? 'Start'} · read-only</p><div className="branch-actions">{viewedTip && <button type="button" onClick={() => { setBranchWorkspace((current) => continueFromPoint(current, viewPoint.id)); setViewPointId(null); }}>Continue on {viewedTip.name}</button>}<button type="button" onClick={() => { setBranchWorkspace((current) => createHypothesis(current, viewPoint.consideredSuspectIds ?? consideredSuspectIds, viewPoint.id)); if (viewPoint.consideredSuspectIds) setConsideredSuspectIds([...viewPoint.consideredSuspectIds]); setViewPointId(null); }}>Branch from here</button><button type="button" onClick={() => setViewPointId(null)}>Cancel preview</button></div></div> : <p className="history-preview">Select a point to inspect it or switch branches.</p>}
                 {!viewPoint && <><div className="checkpoint-actions"><input aria-label="Checkpoint name" placeholder="Checkpoint name (optional)" value={checkpointName} onChange={(event) => setCheckpointName(event.target.value)} /><button type="button" onClick={() => { setBranchWorkspace((current) => saveCheckpoint(current, consideredSuspectIds, checkpointName)); setCheckpointName(''); }}>Save checkpoint</button></div>
                   {activeBranch.id !== 'main' && <label className="branch-name">Branch name<input aria-label="Branch name" value={activeBranch.name} onChange={(event) => setBranchWorkspace((current) => renameHypothesis(current, activeBranch.id, event.target.value))} /></label>}
                   {activeBranch.id !== 'main' && <div className="branch-actions branch-outcomes"><button type="button" onClick={() => { setBranchWorkspace(discardHypothesis); setViewPointId(null); }}>Discard branch</button></div>}
