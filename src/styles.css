@@ -118,3 +118,6 @@
 .deduction-grid.map-view .deduction-cell::before{content:"";position:absolute;inset:-1px;border:1px solid #99aba9;pointer-events:none;z-index:0}
 .deduction-grid.map-view .diagram-map-overlay{opacity:1;overflow:visible}
 .deduction-grid.map-view .map-bed-anchor .object-bed-full{z-index:1}
+.confirmed-token.victim-token{background:#a93f47;box-shadow:0 2px 5px #67262d66}
+.confirmed-token.murderer-token{background:#ad7723;color:#fffaf0;box-shadow:0 2px 5px #6d471b66}
+.diagram-map-overlay.table-inner-corner-se::after{content:"";position:absolute;z-index:3;left:calc(100% - 4px);top:calc(100% - 4px);width:7px;height:7px;border-left:2px solid #544552;border-bottom:2px solid #544552;pointer-events:none}
