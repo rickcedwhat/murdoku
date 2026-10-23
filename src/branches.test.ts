@@ -1,19 +1,119 @@
 import { describe, expect, it } from 'vitest';
-import { activeHypothesis, applyHypothesisToMain, changeDeduction, createHypothesis, discardHypothesis, newBranchWorkspace, parseBranchWorkspace, reconcileBranches, redoDeduction, restoreCheckpoint, saveCheckpoint, switchHypothesis, undoDeduction } from './branches';
+import { activeHypothesis, applyHypothesisToMain, changeDeduction, continueFromPoint, createHypothesis, discardHypothesis, newBranchWorkspace, parseBranchWorkspace, reconcileBranches, redoDeduction, restoreCheckpoint, saveCheckpoint, switchHypothesis, undoDeduction } from './branches';
 import { cell, newPuzzle, placeObject } from './puzzle';
 
 describe('hypothesis branches', () => {
   const mark = (at: string, suspectId: string) => (state: ReturnType<typeof activeHypothesis>['present']) => ({ ...state, notes: { ...state.notes, [at]: { type: 'candidates' as const, suspectIds: [suspectId] } } });
+
+  it('records named checkpoints and confirmed people as points that can be branched from', () => {
+    const puzzle = newPuzzle();
+    const personId = puzzle.suspects[0].id;
+    let workspace = newBranchWorkspace();
+    workspace = changeDeduction(workspace, mark(cell(0, 0), personId));
+    workspace = saveCheckpoint(workspace, [], 'First theory');
+    const checkpoint = workspace.points?.at(-1);
+    expect(workspace.points?.map((point) => point.kind)).toEqual(['start', 'checkpoint']);
+    workspace = changeDeduction(workspace, (state) => ({ ...state, placements: [{ suspectId: personId, cell: cell(0, 1) }] }));
+    expect(workspace.points?.at(-1)).toMatchObject({ kind: 'confirmed', suspectId: personId, parentId: checkpoint?.id });
+    workspace = createHypothesis(workspace, [], checkpoint?.id);
+    expect(activeHypothesis(workspace).present.placements).toEqual([]);
+    expect(workspace.points?.at(-1)).toMatchObject({ kind: 'branch', parentId: checkpoint?.id });
+    expect(parseBranchWorkspace(JSON.parse(JSON.stringify(workspace)), puzzle, { placements: [], notes: {} }).points).toHaveLength(4);
+  });
+
+  it('drops an undone confirmation when a different confirmation replaces it', () => {
+    const puzzle = newPuzzle();
+    const personId = puzzle.suspects[0].id;
+    let workspace = newBranchWorkspace();
+    workspace = changeDeduction(workspace, (state) => ({ ...state, placements: [{ suspectId: personId, cell: cell(0, 0) }] }));
+    workspace = undoDeduction(workspace);
+    workspace = changeDeduction(workspace, (state) => ({ ...state, placements: [{ suspectId: personId, cell: cell(0, 1) }] }));
+    expect(workspace.points?.filter((point) => point.kind === 'confirmed')).toHaveLength(1);
+    const tip = workspace.points?.at(-1);
+    workspace = createHypothesis(workspace, [], workspace.points?.[0].id);
+    workspace = continueFromPoint(workspace, tip!.id);
+    expect(workspace.activeId).toBe('main');
+  });
+
+  it('branches from Start with an empty board even when Main has only uncheckpointed notes', () => {
+    const puzzle = newPuzzle();
+    let workspace = changeDeduction(newBranchWorkspace(), mark(cell(0, 0), puzzle.suspects[0].id));
+    const start = workspace.points![0];
+    expect(workspace.branches[0].headPointId).toBe(start.id);
+    expect(start.state).toEqual({ placements: [], notes: {} });
+    workspace = createHypothesis(workspace, [], start.id);
+    expect(activeHypothesis(workspace).present).toEqual({ placements: [], notes: {} });
+  });
+
+  it('compacts repeated confirmations for one person when loading older history', () => {
+    const puzzle = newPuzzle();
+    const personId = puzzle.suspects[0].id;
+    let workspace = newBranchWorkspace();
+    workspace = changeDeduction(workspace, (state) => ({ ...state, placements: [{ suspectId: personId, cell: cell(0, 0) }] }));
+    workspace = changeDeduction(workspace, (state) => ({ ...state, placements: [{ suspectId: personId, cell: cell(0, 1) }] }));
+    const restored = parseBranchWorkspace(JSON.parse(JSON.stringify(workspace)), puzzle, { placements: [], notes: {} });
+    expect(restored.points?.filter((point) => point.kind === 'confirmed')).toHaveLength(1);
+    expect(restored.points?.at(-1)?.state.placements[0].cell).toBe(cell(0, 1));
+  });
+
+  it('keeps an undone confirmation as the branch head after reload', () => {
+    const puzzle = newPuzzle();
+    const personId = puzzle.suspects[0].id;
+    let workspace = newBranchWorkspace();
+    workspace = changeDeduction(workspace, (state) => ({ ...state, placements: [{ suspectId: personId, cell: cell(0, 0) }] }));
+    const originalHead = activeHypothesis(workspace).headPointId;
+    workspace = changeDeduction(workspace, (state) => ({ ...state, placements: [{ suspectId: personId, cell: cell(0, 1) }] }));
+    workspace = undoDeduction(workspace);
+    const restored = parseBranchWorkspace(JSON.parse(JSON.stringify(workspace)), puzzle, { placements: [], notes: {} });
+    expect(activeHypothesis(restored).headPointId).toBe(originalHead);
+    expect(restored.points?.find((point) => point.id === originalHead)?.state.placements[0].cell).toBe(cell(0, 0));
+    expect(activeHypothesis(restored).present.placements[0].cell).toBe(cell(0, 0));
+  });
+
+  it('keeps a child branch connected when its parent branch is discarded', () => {
+    const puzzle = newPuzzle();
+    let workspace = createHypothesis(newBranchWorkspace());
+    const parentBranchId = workspace.activeId;
+    workspace = changeDeduction(workspace, (state) => ({ ...state, placements: [{ suspectId: puzzle.suspects[0].id, cell: cell(0, 0) }] }));
+    const sharedPointId = activeHypothesis(workspace).headPointId;
+    workspace = createHypothesis(workspace, [], sharedPointId);
+    const childBranchId = workspace.activeId;
+    const childForkId = activeHypothesis(workspace).headPointId;
+    workspace = switchHypothesis(workspace, parentBranchId);
+    workspace = changeDeduction(workspace, (state) => ({ ...state, placements: [...state.placements, { suspectId: puzzle.suspects[1].id, cell: cell(0, 1) }] }));
+    const parentOnlyPointId = activeHypothesis(workspace).headPointId;
+    workspace = discardHypothesis(workspace);
+    expect(workspace.branches.some((branch) => branch.id === parentBranchId)).toBe(false);
+    expect(workspace.branches.some((branch) => branch.id === childBranchId)).toBe(true);
+    expect(workspace.points?.find((point) => point.id === childForkId)?.parentId).toBe(sharedPointId);
+    expect(workspace.points?.some((point) => point.id === sharedPointId)).toBe(true);
+    expect(workspace.points?.some((point) => point.id === parentOnlyPointId)).toBe(false);
+  });
+
+  it('does not recreate inherited confirmations when migrating a legacy fork', () => {
+    const puzzle = newPuzzle();
+    const inheritedId = puzzle.suspects[0].id;
+    const addedId = puzzle.suspects[1].id;
+    let workspace = newBranchWorkspace({ placements: [{ suspectId: inheritedId, cell: cell(0, 0) }], notes: {} });
+    workspace = createHypothesis(workspace);
+    workspace = changeDeduction(workspace, (state) => ({ ...state, placements: [...state.placements, { suspectId: addedId, cell: cell(0, 1) }] }));
+    const legacy = { ...workspace, points: undefined, branches: workspace.branches.map(({ headPointId: _headPointId, ...branch }) => branch) };
+    const restored = parseBranchWorkspace(JSON.parse(JSON.stringify(legacy)), puzzle, { placements: [], notes: {} });
+    const confirmed = restored.points?.filter((point) => point.kind === 'confirmed');
+    expect(confirmed?.map((point) => point.suspectId)).toEqual([inheritedId, addedId]);
+    expect(restored.points?.find((point) => point.kind === 'branch')?.state.placements.map((item) => item.suspectId)).toEqual([inheritedId]);
+  });
 
   it('starts sibling hypotheses from the saved checkpoint and keeps their notes separate', () => {
     const puzzle = newPuzzle();
     let workspace = newBranchWorkspace();
     workspace = changeDeduction(workspace, mark(cell(0, 0), puzzle.suspects[0].id));
     workspace = saveCheckpoint(workspace);
-    workspace = createHypothesis(workspace);
+    const checkpointId = workspace.points?.find((point) => point.kind === 'checkpoint')?.id;
+    workspace = createHypothesis(workspace, [], checkpointId);
     const firstId = workspace.activeId;
     workspace = changeDeduction(workspace, mark(cell(0, 1), puzzle.suspects[1].id));
-    workspace = createHypothesis(workspace);
+    workspace = createHypothesis(workspace, [], checkpointId);
     expect(activeHypothesis(workspace).present.notes[cell(0, 1)]).toBeUndefined();
     workspace = changeDeduction(workspace, mark(cell(0, 2), puzzle.suspects[2].id));
     const secondId = workspace.activeId;

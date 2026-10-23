@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from 'react';
 import {
   assignCellToRoom,
   cell,
@@ -19,19 +19,113 @@ import {
   type WallSide,
 } from './puzzle';
 import { ObjectMark } from './ObjectMark';
-import { activeHypothesis, applyHypothesisToMain, changeDeduction, createHypothesis, discardHypothesis, newBranchWorkspace, reconcileBranches, redoDeduction, renameHypothesis, restoreCheckpoint, saveCheckpoint, switchHypothesis, undoDeduction, type BranchWorkspace } from './branches';
-import { CASE_LIBRARY_KEY, LEGACY_CASE_KEY, fillLineWithXs, importTargetsActiveCase, newSavedCase, parseCaseLibrary, upsertCase, type SavedCase } from './cases';
+import { activeHypothesis, changeDeduction, continueFromPoint, createHypothesis, discardHypothesis, newBranchWorkspace, reconcileBranches, redoDeduction, renameHypothesis, saveCheckpoint, undoDeduction, type BranchWorkspace, type HistoryPoint } from './branches';
+import { CASE_LIBRARY_KEY, LEGACY_CASE_KEY, fillLineWithXs, importTargetsActiveCase, newSavedCase, parseCaseLibrary, removeConfirmedCandidate, upsertCase, type SavedCase } from './cases';
 import { suspectLetter as letterForSuspect, suspectsForInitial } from './suspectLetters';
+import collegeDormitoryJson from '../local-cases/46-college-dormitory.json';
 
 type Mode = 'edit' | 'play';
 type Tool = 'outline' | 'room' | 'object' | 'erase';
 type EditorTab = 'setup' | 'rooms' | 'furniture' | 'people' | 'rules';
-type NoteTool = 'candidate' | 'confirmed' | 'empty' | 'erase';
+type NoteTool = 'erase' | null;
 const ROOM_COLORS = ['#d9e9df', '#f5e5cd', '#dce7f2', '#eadff0', '#f4deda', '#e8ebd6', '#e5dfea', '#dbece9'];
+const HIDDEN_BUNDLED_CASES_KEY = 'murdoku-hidden-bundled-cases-v1';
+
+type HistoryEntry = { kind: 'point'; point: HistoryPoint } | { kind: 'fold'; id: string; count: number; expanded: boolean; branchId: string; hiddenIds: string[]; parentId: string };
+
+function historyEntries(points: HistoryPoint[], expandedIds: string[]): HistoryEntry[] {
+  const children = new Map<string, HistoryPoint[]>();
+  for (const point of points) if (point.parentId) children.set(point.parentId, [...(children.get(point.parentId) ?? []), point]);
+  const ordered: HistoryPoint[] = [];
+  const visited = new Set<string>();
+  const visit = (point: HistoryPoint) => {
+    if (visited.has(point.id)) return;
+    visited.add(point.id);
+    ordered.push(point);
+    for (const child of [...(children.get(point.id) ?? [])].sort((left, right) => Number(left.branchId === point.branchId) - Number(right.branchId === point.branchId))) visit(child);
+  };
+  for (const point of points) if (point.kind === 'start') visit(point);
+  for (const point of points) visit(point);
+  const newestFirst = ordered.reverse();
+  const entries: HistoryEntry[] = [];
+  for (let index = 0; index < newestFirst.length;) {
+    const point = newestFirst[index];
+    if (point.kind !== 'confirmed') { entries.push({ kind: 'point', point }); index += 1; continue; }
+    let end = index + 1;
+    while (end < newestFirst.length && newestFirst[end].kind === 'confirmed' && newestFirst[end].branchId === point.branchId) end += 1;
+    const run = newestFirst.slice(index, end);
+    if (run.length <= 3) entries.push(...run.map((item): HistoryEntry => ({ kind: 'point', point: item })));
+    else {
+      const id = `${run[0].id}:${run.at(-1)!.id}`;
+      const expanded = expandedIds.includes(id);
+      entries.push({ kind: 'point', point: run[0] }, { kind: 'point', point: run[1] }, { kind: 'fold', id, count: run.length - 3, expanded, branchId: point.branchId, hiddenIds: run.slice(2, -1).map((item) => item.id), parentId: run.at(-1)!.id });
+      if (expanded) entries.push(...run.slice(2, -1).map((item): HistoryEntry => ({ kind: 'point', point: item })));
+      entries.push({ kind: 'point', point: run.at(-1)! });
+    }
+    index = end;
+  }
+  return entries;
+}
+
+function historyLane(point: HistoryPoint, pointById: Map<string, HistoryPoint>, branches: BranchWorkspace['branches']): number {
+  if (point.kind === 'branch') {
+    const parent = point.parentId && pointById.get(point.parentId);
+    if (parent) return historyLane(parent, pointById, branches);
+  }
+  return Math.max(0, branches.findIndex((branch) => branch.id === point.branchId));
+}
+
+function historyRowCenters(entries: HistoryEntry[]): number[] {
+  let top = 0;
+  return entries.map((entry) => {
+    const height = entry.kind === 'fold' ? 26 : 39;
+    const center = top + height / 2;
+    top += height;
+    return center;
+  });
+}
+
+function historyPaths(entries: HistoryEntry[], points: HistoryPoint[], branches: BranchWorkspace['branches'], rowCenters: number[]): string[] {
+  const pointById = new Map(points.map((point) => [point.id, point]));
+  const visible = new Map<string, number>();
+  entries.forEach((entry, index) => {
+    if (entry.kind === 'point') visible.set(entry.point.id, index);
+    else if (!entry.expanded) entry.hiddenIds.forEach((id) => visible.set(id, index));
+  });
+  const lane = (branchId: string) => Math.max(0, branches.findIndex((branch) => branch.id === branchId));
+  const laneX = (branchId: string) => 12 + lane(branchId) * 23;
+  const rowY = (index: number) => rowCenters[index];
+  const paths = new Set<string>();
+  entries.forEach((entry, index) => {
+    if (entry.kind === 'fold' && entry.expanded) return;
+    let parentId = entry.kind === 'point' ? entry.point.parentId : entry.parentId;
+    while (parentId && !visible.has(parentId)) parentId = pointById.get(parentId)?.parentId;
+    if (!parentId) return;
+    const parentIndex = visible.get(parentId)!;
+    if (parentIndex === index) return;
+    const branchId = entry.kind === 'point' ? entry.point.branchId : entry.branchId;
+    const parentBranchId = pointById.get(parentId)?.branchId ?? branchId;
+    const x = entry.kind === 'point' ? 12 + historyLane(entry.point, pointById, branches) * 23 : laneX(branchId);
+    const parent = pointById.get(parentId);
+    const parentX = parent ? 12 + historyLane(parent, pointById, branches) * 23 : laneX(parentBranchId);
+    const y = rowY(index);
+    const parentY = rowY(parentIndex);
+    paths.add(x === parentX ? `M ${x} ${y} V ${parentY}` : `M ${x} ${y} L ${parentX} ${parentY}`);
+  });
+  return [...paths];
+}
 
 function loadCases(): SavedCase[] {
   try {
-    return parseCaseLibrary(localStorage.getItem(CASE_LIBRARY_KEY), localStorage.getItem(LEGACY_CASE_KEY));
+    const existing = parseCaseLibrary(localStorage.getItem(CASE_LIBRARY_KEY), localStorage.getItem(LEGACY_CASE_KEY));
+    const collegeDormitory = parsePuzzle(collegeDormitoryJson);
+    let hidden: unknown = [];
+    try { hidden = JSON.parse(localStorage.getItem(HIDDEN_BUNDLED_CASES_KEY) ?? '[]'); } catch { /* Ignore a damaged hidden-case list. */ }
+    if (Array.isArray(hidden) && hidden.includes(collegeDormitory.id)) return existing;
+    if (existing.some((saved) => saved.puzzle.id === collegeDormitory.id || saved.puzzle.title === collegeDormitory.title)) return existing;
+    const cases = [newSavedCase(collegeDormitory, 'play'), ...existing];
+    try { localStorage.setItem(CASE_LIBRARY_KEY, JSON.stringify({ version: 1, cases })); } catch { /* Keep the case available in memory. */ }
+    return cases;
   } catch {
     return [];
   }
@@ -48,13 +142,18 @@ export default function App() {
   const [mode, setMode] = useState<Mode>('edit');
   const [editorTab, setEditorTab] = useState<EditorTab>('setup');
   const [playTab, setPlayTab] = useState<'clues' | 'checks'>('clues');
-  const [noteTool, setNoteTool] = useState<NoteTool>('candidate');
+  const [noteTool, setNoteTool] = useState<NoteTool>(null);
   const [tool, setTool] = useState<Tool>('room');
   const [selectedRoom, setSelectedRoom] = useState(initial[0]?.puzzle.rooms[0]?.id ?? '');
   const [selectedKind, setSelectedKind] = useState(initial[0]?.puzzle.objectKinds[0]?.id ?? '');
   const [bedDirection, setBedDirection] = useState<WallSide>('E');
   const [activeNoteCell, setActiveNoteCell] = useState<Cell | null>(null);
-  const [personChoices, setPersonChoices] = useState<{ cell: Cell; ids: string[] } | null>(null);
+  const [personChoices, setPersonChoices] = useState<{ cell: Cell; ids: string[]; confirmed: boolean } | null>(null);
+  const [overlayPinned, setOverlayPinned] = useState(false);
+  const [overlayHeld, setOverlayHeld] = useState(false);
+  const [viewPointId, setViewPointId] = useState<string | null>(null);
+  const [checkpointName, setCheckpointName] = useState('');
+  const [expandedHistory, setExpandedHistory] = useState<string[]>([]);
   const [notice, setNotice] = useState('');
   const [saveFailed, setSaveFailed] = useState(false);
   const [cellWidth, setCellWidth] = useState(58);
@@ -98,6 +197,20 @@ export default function App() {
       setSaveFailed(true);
     }
   }, [cases]);
+
+  useEffect(() => {
+    if (mode !== 'play') return;
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (event.key === 'Shift' && !target?.closest('input, textarea, select, [contenteditable="true"]')) setOverlayHeld(true);
+    };
+    const onKeyUp = (event: globalThis.KeyboardEvent) => { if (event.key === 'Shift') setOverlayHeld(false); };
+    const onBlur = () => setOverlayHeld(false);
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', onBlur);
+    return () => { window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp); window.removeEventListener('blur', onBlur); };
+  }, [mode]);
 
   const playable = useMemo(() => new Set(puzzle.playable), [puzzle.playable]);
   const roomByCell = useMemo(() => {
@@ -155,9 +268,22 @@ export default function App() {
   }, [puzzle.objects]);
   const kindById = useMemo(() => new Map(puzzle.objectKinds.map((kind) => [kind.id, kind])), [puzzle.objectKinds]);
   const activeBranch = activeHypothesis(branchWorkspace);
-  const { placements, notes } = activeBranch.present;
+  const viewPoint = branchWorkspace.points?.find((point) => point.id === viewPointId);
+  const history = useMemo(() => historyEntries(branchWorkspace.points ?? [], expandedHistory), [branchWorkspace.points, expandedHistory]);
+  const historyPointsById = useMemo(() => new Map((branchWorkspace.points ?? []).map((point) => [point.id, point])), [branchWorkspace.points]);
+  const historyCenters = useMemo(() => historyRowCenters(history), [history]);
+  const historyLines = useMemo(() => historyPaths(history, branchWorkspace.points ?? [], branchWorkspace.branches, historyCenters), [history, branchWorkspace.points, branchWorkspace.branches, historyCenters]);
+  const historyHeight = history.reduce((height, entry) => height + (entry.kind === 'fold' ? 26 : 39), 0);
+  const viewedTip = viewPoint && branchWorkspace.branches.find((branch) => branch.headPointId === viewPoint.id);
+  const { placements, notes } = viewPoint?.kind === 'start' ? viewPoint.state : viewedTip?.present ?? viewPoint?.state ?? activeBranch.present;
   const placementsByCell = useMemo(() => new Map(placements.map((placement) => [placement.cell, placement])), [placements]);
+  const victimId = puzzle.suspects.find((suspect) => suspect.isVictim)?.id;
+  const victimPlacement = placements.find((placement) => placement.suspectId === victimId);
+  const victimRoom = victimPlacement && roomByCell.get(victimPlacement.cell);
+  const victimRoommates = victimRoom === undefined ? [] : placements.filter((placement) => placement.suspectId !== victimId && roomByCell.get(placement.cell) === victimRoom);
+  const murdererId = victimRoommates.length === 1 ? victimRoommates[0].suspectId : undefined;
   const selectedPlacement = placements.find((placement) => placement.cell === activeNoteCell);
+  const showDiagramMap = mode === 'play' && (overlayPinned || overlayHeld);
   const deductionCellSize = Math.max(42, Math.ceil(Math.sqrt(puzzle.suspects.length)) * 14);
   const setupProblems = validatePuzzle(puzzle);
   const playProblems = validatePlacements(puzzle, placements);
@@ -179,12 +305,11 @@ export default function App() {
     }
   }
 
-  function markCell(key: Cell, suspectId?: string) {
+  function markCell(key: Cell, suspectId?: string, confirmed = false) {
     if (!playable.has(key)) return;
     const floor = floorObjectsByCell.get(key);
     if (floor && !kindById.get(floor.kindId)?.canOccupy) return;
-    if (noteTool === 'confirmed') {
-      if (!suspectId) return;
+    if (suspectId && confirmed) {
       setBranchWorkspace((current) => changeDeduction(current, (state) => {
         state.placements = state.placements.some((item) => item.suspectId === suspectId && item.cell === key)
           ? state.placements.filter((item) => item.cell !== key)
@@ -194,8 +319,7 @@ export default function App() {
       }));
       return;
     }
-    if (noteTool === 'candidate') {
-      if (!suspectId) return;
+    if (suspectId) {
       setBranchWorkspace((current) => changeDeduction(current, (state) => {
         state.placements = state.placements.filter((item) => item.cell !== key);
         const existing = state.notes[key]?.type === 'candidates' ? state.notes[key].suspectIds : [];
@@ -206,10 +330,31 @@ export default function App() {
       }));
       return;
     }
+    if (!noteTool) return;
     setBranchWorkspace((current) => changeDeduction(current, (state) => {
       state.placements = state.placements.filter((item) => item.cell !== key);
-      if (noteTool === 'erase' || state.notes[key]?.type === noteTool) delete state.notes[key];
-      else state.notes[key] = { type: noteTool };
+      delete state.notes[key];
+      return state;
+    }));
+  }
+
+  function toggleX(key: Cell) {
+    if (!playable.has(key)) return;
+    const floor = floorObjectsByCell.get(key);
+    if (floor && !kindById.get(floor.kindId)?.canOccupy) return;
+    setBranchWorkspace((current) => changeDeduction(current, (state) => {
+      state.placements = state.placements.filter((item) => item.cell !== key);
+      if (state.notes[key]?.type === 'empty') delete state.notes[key];
+      else state.notes[key] = { type: 'empty' };
+      return state;
+    }));
+  }
+
+  function clearDeductionCell(key: Cell) {
+    if (!playable.has(key)) return;
+    setBranchWorkspace((current) => changeDeduction(current, (state) => {
+      state.placements = state.placements.filter((item) => item.cell !== key);
+      delete state.notes[key];
       return state;
     }));
   }
@@ -242,25 +387,26 @@ export default function App() {
   }
 
   function typePerson(key: Cell, typed: string) {
-    if (noteTool !== 'candidate' && noteTool !== 'confirmed') return false;
     const matches = suspectsForInitial(puzzle.suspects, typed);
     if (!matches.length) return false;
+    const confirmed = typed === typed.toUpperCase();
     if (matches.length > 1) {
-      setPersonChoices({ cell: key, ids: matches.map((person) => person.id) });
+      setPersonChoices({ cell: key, ids: matches.map((person) => person.id), confirmed });
       return true;
     }
     setPersonChoices(null);
-    markCell(key, matches[0].id);
+    markCell(key, matches[0].id, confirmed);
     return true;
   }
 
-  function choosePerson(key: Cell, id: string) {
+  function choosePerson(key: Cell, id: string, confirmed: boolean) {
     setPersonChoices(null);
-    markCell(key, id);
+    markCell(key, id, confirmed);
     document.getElementById(`deduction-${key}`)?.focus();
   }
 
   function handleNoteKeyDown(event: KeyboardEvent<HTMLButtonElement>, key: Cell) {
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
     if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) {
       event.preventDefault();
       setPersonChoices(null);
@@ -270,7 +416,15 @@ export default function App() {
       setPersonChoices(null);
     } else if (personChoices?.cell === key && /^[1-9]$/.test(event.key) && personChoices.ids[Number(event.key) - 1]) {
       event.preventDefault();
-      choosePerson(key, personChoices.ids[Number(event.key) - 1]);
+      choosePerson(key, personChoices.ids[Number(event.key) - 1], personChoices.confirmed);
+    } else if (!event.repeat && (event.key === 'Backspace' || event.key === 'Delete')) {
+      event.preventDefault();
+      setPersonChoices(null);
+      clearDeductionCell(key);
+    } else if (!event.repeat && event.key.toLowerCase() === 'x') {
+      event.preventDefault();
+      setPersonChoices(null);
+      toggleX(key);
     } else if (!event.repeat && event.key.length === 1 && typePerson(key, event.key)) {
       event.preventDefault();
     }
@@ -463,6 +617,7 @@ export default function App() {
     setActiveCaseId(next.id);
     setPuzzle(next);
     setBranchWorkspace(newBranchWorkspace());
+    setViewPointId(null);
     setConsideredSuspectIds([]);
     setScratchNotes('');
     setSelectedRoom(next.rooms[0].id);
@@ -478,14 +633,29 @@ export default function App() {
     setActiveCaseId(saved.puzzle.id);
     setPuzzle(saved.puzzle);
     setBranchWorkspace(saved.branchWorkspace);
+    setViewPointId(null);
     setConsideredSuspectIds(saved.consideredSuspectIds);
     setScratchNotes(saved.scratchNotes);
     setSelectedRoom(saved.puzzle.rooms[0]?.id ?? '');
     setSelectedKind(saved.puzzle.objectKinds[0]?.id ?? '');
     setActiveNoteCell(null);
     setPersonChoices(null);
+    setOverlayPinned(false);
+    setOverlayHeld(false);
     setMode(saved.lastMode);
     setNotice('');
+  }
+
+  function deleteCase(saved: SavedCase) {
+    if (!window.confirm(`Delete “${saved.puzzle.title || 'Untitled case'}” and its saved notes? This cannot be undone.`)) return;
+    if (saved.puzzle.id === collegeDormitoryJson.id) {
+      try {
+        const hidden = JSON.parse(localStorage.getItem(HIDDEN_BUNDLED_CASES_KEY) ?? '[]');
+        localStorage.setItem(HIDDEN_BUNDLED_CASES_KEY, JSON.stringify([...new Set([...(Array.isArray(hidden) ? hidden : []), saved.puzzle.id])]));
+      } catch { setSaveFailed(true); }
+    }
+    setCases((current) => current.filter((item) => item.puzzle.id !== saved.puzzle.id));
+    setNotice(`Deleted ${saved.puzzle.title || 'Untitled case'}.`);
   }
 
   function toggleConsidered(id: string) {
@@ -505,7 +675,7 @@ export default function App() {
           {notice && <p className="notice" role="status">{notice}</p>}
           {cases.length ? <div className="case-list">{cases.map((saved) => <article className="case-card" key={saved.puzzle.id}>
             <div><p className="eyebrow">{saved.puzzle.rows} × {saved.puzzle.cols} MAP · {saved.puzzle.suspects.length} PEOPLE</p><h2>{saved.puzzle.title.trim() || 'Untitled case'}</h2><p>{activeHypothesis(saved.branchWorkspace).present.placements.length} confirmed · Last worked on {new Date(saved.updatedAt).toLocaleDateString()}</p></div>
-            <button type="button" className="primary-button" onClick={() => openCase(saved)}>Continue →</button>
+            <div className="case-card-actions"><button type="button" className="primary-button" onClick={() => openCase(saved)}>Continue →</button><button type="button" className="case-delete" onClick={() => deleteCase(saved)} aria-label={`Delete ${saved.puzzle.title || 'Untitled case'}`}>Delete</button></div>
           </article>)}</div> : <div className="empty-library"><h2>No cases yet</h2><p>Start by drawing your first map. It will appear here whenever you return.</p><button type="button" className="primary-button" onClick={newCase}>Create a case</button></div>}
         </section> : <>
         <div className="page-heading">
@@ -620,40 +790,39 @@ export default function App() {
               <span>{mode === 'edit' ? (tool === 'object' && kindById.get(selectedKind)?.onWall ? 'Click a highlighted wall edge' : tool === 'room' || tool === 'object' ? 'Tap or drag to paint' : 'Tap cells to apply the selected tool') : 'Illustrated reference map'}</span>
             </div>
             {mode === 'play' && <section className="deduction-panel" aria-label="Deduction grid">
-              <div className="deduction-heading"><div><p className="eyebrow">DEDUCTION GRID</p><h2>Your notes</h2></div><span className="dimension-badge">{placements.length} confirmed</span></div>
-              <div className="branch-panel" aria-label="Hypotheses">
-                <div className="branch-heading"><strong>Hypotheses</strong><span>{branchWorkspace.checkpoint ? branchWorkspace.checkpoint.name : 'Save a point to try different ideas'}</span></div>
-                {branchWorkspace.checkpoint && <div className="checkpoint-summary">
-                  <span>{branchWorkspace.checkpoint.state.placements.length} confirmed · {Object.keys(branchWorkspace.checkpoint.state.notes).length} noted cells</span>
-                  <span>{branchWorkspace.checkpoint.consideredSuspectIds ? `Checked: ${puzzle.suspects.filter((person) => branchWorkspace.checkpoint?.consideredSuspectIds?.includes(person.id)).map((person) => person.name).join(', ') || 'none'}` : 'Checked people were not saved in this older checkpoint'}</span>
-                </div>}
-                <div className="branch-list" role="group" aria-label="Choose hypothesis">{branchWorkspace.branches.map((branch) => <button key={branch.id} type="button" className={branchWorkspace.activeId === branch.id ? 'selected' : ''} aria-pressed={branchWorkspace.activeId === branch.id} onClick={() => setBranchWorkspace((current) => switchHypothesis(current, branch.id))}>{branch.name}</button>)}</div>
-                {activeBranch.id !== 'main' && <label className="branch-name">Branch name<input aria-label="Branch name" value={activeBranch.name} onChange={(event) => setBranchWorkspace((current) => renameHypothesis(current, activeBranch.id, event.target.value))} /></label>}
-                <div className="branch-actions">
-                  <button type="button" onClick={() => setBranchWorkspace((current) => saveCheckpoint(current, consideredSuspectIds))}>Save checkpoint</button>
-                  <button type="button" onClick={() => setBranchWorkspace((current) => createHypothesis(current, consideredSuspectIds))}>+ New hypothesis</button>
-                  {branchWorkspace.checkpoint && <button type="button" onClick={() => {
-                    setBranchWorkspace(restoreCheckpoint);
-                    if (branchWorkspace.checkpoint?.consideredSuspectIds) setConsideredSuspectIds([...branchWorkspace.checkpoint.consideredSuspectIds]);
-                  }}>Restore checkpoint</button>}
-                </div>
-                {activeBranch.id !== 'main' && <div className="branch-actions branch-outcomes"><button type="button" onClick={() => setBranchWorkspace(applyHypothesisToMain)}>Apply to Main</button><button type="button" onClick={() => setBranchWorkspace(discardHypothesis)}>Discard hypothesis</button></div>}
-                <div className="history-actions"><button type="button" disabled={!activeBranch.undo.length} onClick={() => setBranchWorkspace(undoDeduction)}>↶ Undo</button><button type="button" disabled={!activeBranch.redo.length} onClick={() => setBranchWorkspace(redoDeduction)}>↷ Redo</button><button type="button" onClick={() => setBranchWorkspace((current) => changeDeduction(current, () => ({ placements: [], notes: {} })))}>Reset notes</button></div>
+              <div className="deduction-heading"><div><p className="eyebrow">DEDUCTION GRID</p><h2>Your notes</h2></div><div className="diagram-heading-actions"><button type="button" className="diagram-map-toggle" aria-pressed={overlayPinned} onClick={() => setOverlayPinned((current) => !current)}>{overlayPinned ? 'Hide map' : 'Show map'}</button><span className="dimension-badge">{placements.length} confirmed</span></div></div>
+              <div className="branch-panel" aria-label="History">
+                <div className="branch-heading"><strong>History</strong><span>Newest at top · Start at bottom</span></div>
+                <div className="history-graph" role="list" aria-label="Deduction history"><div className="history-track"><svg className="history-lines" aria-hidden="true" width="100%" height={historyHeight}><g fill="none" stroke="#a9beb2" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{historyLines.map((path) => <path key={path} d={path} />)}</g></svg>{history.map((entry) => {
+                  const lane = entry.kind === 'point' ? historyLane(entry.point, historyPointsById, branchWorkspace.branches) : Math.max(0, branchWorkspace.branches.findIndex((branch) => branch.id === entry.branchId));
+                  if (entry.kind === 'fold') return <div className="history-row history-fold" role="listitem" key={entry.id} style={{ '--lane-offset': `${lane * 23}px` } as CSSProperties}><span className="history-rail" aria-hidden="true" /><button type="button" aria-expanded={entry.expanded} onClick={() => setExpandedHistory((current) => entry.expanded ? current.filter((id) => id !== entry.id) : [...current, entry.id])}>{entry.expanded ? 'Show fewer points' : `Show ${entry.count} earlier points`}</button></div>;
+                  const point = entry.point;
+                  const person = puzzle.suspects.find((suspect) => suspect.id === point.suspectId);
+                  const label = point.kind === 'start' ? 'Start · empty board' : point.kind === 'confirmed' ? person?.name ?? 'Person confirmed' : point.kind === 'branch' ? 'Branch point' : point.name || 'Checkpoint';
+                  const parentBranch = point.parentId && historyPointsById.get(point.parentId)?.kind === 'branch' ? historyPointsById.get(point.parentId) : undefined;
+                  const tip = branchWorkspace.branches.some((branch) => branch.headPointId === point.id);
+                  return <div className={`history-row ${viewPointId === point.id ? 'viewing' : ''} ${!viewPoint && activeBranch.headPointId === point.id ? 'current' : ''}`} role="listitem" key={point.id} style={{ '--lane-offset': `${lane * 23}px` } as CSSProperties}><span className={`history-rail ${point.kind}`} aria-hidden="true" /><button type="button" onClick={() => { setViewPointId(point.id); setActiveNoteCell(null); setPersonChoices(null); }}><span className="history-title"><strong>{label}</strong>{parentBranch && <span className="history-branch-tag">{parentBranch.name}</span>}</span><small>{point.kind === 'start' ? 'Beginning' : tip ? 'Branch tip' : point.kind === 'confirmed' ? 'Confirmed' : point.kind === 'branch' ? 'Fork' : 'Checkpoint'}{!viewPoint && activeBranch.headPointId === point.id ? ' · current' : ''}</small></button></div>;
+                })}</div></div>
+                {viewPoint ? <div className="history-preview"><p>Viewing {viewPoint.kind === 'confirmed' ? puzzle.suspects.find((suspect) => suspect.id === viewPoint.suspectId)?.name ?? 'confirmation' : viewPoint.kind === 'branch' ? 'branch point' : viewPoint.name ?? 'Start'} · read-only</p><div className="branch-actions">{viewedTip && <button type="button" onClick={() => { setBranchWorkspace((current) => continueFromPoint(current, viewPoint.id)); setViewPointId(null); }}>Continue on {viewedTip.name}</button>}<button type="button" onClick={() => { setBranchWorkspace((current) => createHypothesis(current, viewPoint.consideredSuspectIds ?? consideredSuspectIds, viewPoint.id)); if (viewPoint.consideredSuspectIds) setConsideredSuspectIds([...viewPoint.consideredSuspectIds]); setViewPointId(null); }}>Branch from here</button><button type="button" onClick={() => setViewPointId(null)}>Cancel preview</button></div></div> : <p className="history-preview">Select a point to inspect it or switch branches.</p>}
+                {!viewPoint && <><div className="checkpoint-actions"><input aria-label="Checkpoint name" placeholder="Checkpoint name (optional)" value={checkpointName} onChange={(event) => setCheckpointName(event.target.value)} /><button type="button" onClick={() => { setBranchWorkspace((current) => saveCheckpoint(current, consideredSuspectIds, checkpointName)); setCheckpointName(''); }}>Save checkpoint</button></div>
+                  {activeBranch.id !== 'main' && <label className="branch-name">Branch name<input aria-label="Branch name" value={activeBranch.name} onChange={(event) => setBranchWorkspace((current) => renameHypothesis(current, activeBranch.id, event.target.value))} /></label>}
+                  {activeBranch.id !== 'main' && <div className="branch-actions branch-outcomes"><button type="button" onClick={() => { setBranchWorkspace(discardHypothesis); setViewPointId(null); }}>Discard branch</button></div>}
+                  <div className="history-actions"><button type="button" disabled={!activeBranch.undo.length} onClick={() => setBranchWorkspace(undoDeduction)}>↶ Undo</button><button type="button" disabled={!activeBranch.redo.length} onClick={() => setBranchWorkspace(redoDeduction)}>↷ Redo</button><button type="button" onClick={() => setBranchWorkspace((current) => changeDeduction(current, () => ({ placements: [], notes: {} })))}>Reset notes</button></div></>}
               </div>
-              <p className="hint">Click a cell, then type a person's initial (V for the victim). If initials repeat, choose the person shown. Use arrow keys to move between cells.</p>
-              <div className="note-tools" role="group" aria-label="Deduction mark">
-                {([['candidate', 'Pencil letters'], ['confirmed', 'Confirmed'], ['empty', 'Empty X'], ['erase', 'Erase']] as const).map(([value, label]) => <button key={value} type="button" className={noteTool === value ? 'selected' : ''} onClick={() => {
-                  setNoteTool(value);
+              <p className="hint">Click a cell, then type a lowercase initial to pencil a person or uppercase to confirm them. Press X to mark it empty or Backspace to clear it. Hold Shift to see the map beneath your notes. Use arrow keys to move between cells.</p>
+              {!viewPoint && <div className="note-tools" role="group" aria-label="Deduction mark">
+                <button type="button" className={noteTool === 'erase' ? 'selected' : ''} onClick={() => {
+                  setNoteTool((current) => current === 'erase' ? null : 'erase');
                   setPersonChoices(null);
                   if (activeNoteCell) document.getElementById(`deduction-${activeNoteCell}`)?.focus();
-                }}>{label}</button>)}
-              </div>
-              {personChoices && <div className="person-choices" role="group" aria-label="Choose person for repeated initial"><span>Which person?</span>{personChoices.ids.map((id, index) => {
+                }}>Erase</button>
+              </div>}
+              {!viewPoint && personChoices && <div className="person-choices" role="group" aria-label="Choose person for repeated initial"><span>Which person?</span>{personChoices.ids.map((id, index) => {
                 const person = puzzle.suspects.find((suspect) => suspect.id === id);
-                return person && <button key={id} type="button" onClick={() => choosePerson(personChoices.cell, id)}>{index < 9 ? `${index + 1} · ` : ''}{suspectLetter(id)} {person.name}</button>;
+                return person && <button key={id} type="button" onClick={() => choosePerson(personChoices.cell, id, personChoices.confirmed)}>{index < 9 ? `${index + 1} · ` : ''}{personChoices.confirmed ? suspectLetter(id) : suspectLetter(id).toLowerCase()} {person.name}</button>;
               })}<span className="choice-hint">Press a number or click a name.</span></div>}
-              {selectedPlacement && <div className="line-actions"><span>{suspectLetter(selectedPlacement.suspectId)} confirmed at row {coordinates(selectedPlacement.cell)[0] + 1}, column {coordinates(selectedPlacement.cell)[1] + 1}</span><button type="button" onClick={() => setBranchWorkspace((current) => fillLineWithXs(current, puzzle, selectedPlacement.cell, 'row'))}>Fill row Xs</button><button type="button" onClick={() => setBranchWorkspace((current) => fillLineWithXs(current, puzzle, selectedPlacement.cell, 'column'))}>Fill column Xs</button></div>}
-              <div className="deduction-content"><div className="deduction-scroll"><div className="deduction-grid" style={{ gridTemplateColumns: `repeat(${puzzle.cols}, ${deductionCellSize}px)` }}>{Array.from({ length: puzzle.rows * puzzle.cols }, (_, index) => {
+              {!viewPoint && selectedPlacement && <div className="line-actions"><span>{suspectLetter(selectedPlacement.suspectId)} confirmed at row {coordinates(selectedPlacement.cell)[0] + 1}, column {coordinates(selectedPlacement.cell)[1] + 1}</span><button type="button" onClick={() => setBranchWorkspace((current) => removeConfirmedCandidate(current, selectedPlacement.suspectId, selectedPlacement.cell))}>Clear other {suspectLetter(selectedPlacement.suspectId)} pencils</button><button type="button" onClick={() => setBranchWorkspace((current) => fillLineWithXs(current, puzzle, selectedPlacement.cell, 'row'))}>Fill row Xs</button><button type="button" onClick={() => setBranchWorkspace((current) => fillLineWithXs(current, puzzle, selectedPlacement.cell, 'column'))}>Fill column Xs</button></div>}
+              <div className="deduction-content"><div className="deduction-scroll"><div className={`deduction-grid ${showDiagramMap ? 'map-view' : ''}`} style={{ gridTemplateColumns: `repeat(${puzzle.cols}, ${deductionCellSize}px)` }}>{Array.from({ length: puzzle.rows * puzzle.cols }, (_, index) => {
                 const row = Math.floor(index / puzzle.cols);
                 const col = index % puzzle.cols;
                 const key = cell(row, col);
@@ -666,13 +835,30 @@ export default function App() {
                   right: col === puzzle.cols - 1 || !playable.has(cell(row, col + 1)),
                 } : null;
                 const floor = floorObjectsByCell.get(key);
+                const floorKind = floor && kindById.get(floor.kindId);
+                const bedCells = floor && floorKind?.art === 'bed' ? objectCells(puzzle, floor) : [];
+                const bedPart = bedCells.length === 2 ? (
+                  bedCells.map(coordinates).sort((a, b) => a[0] - b[0] || a[1] - b[1])[0].join(',') === key ? 'first' : 'second'
+                ) : undefined;
+                const bedAxis = bedCells.length === 2 && coordinates(bedCells[0])[0] !== coordinates(bedCells[1])[0] ? 'vertical' : 'horizontal';
+                const connections = floor && (['N', 'E', 'S', 'W'] as const).filter((side) => {
+                  const adjacent = side === 'N' ? cell(row - 1, col) : side === 'S' ? cell(row + 1, col) : side === 'E' ? cell(row, col + 1) : cell(row, col - 1);
+                  return floorObjectsByCell.get(adjacent)?.kindId === floor.kindId && roomByCell.get(adjacent) === roomIndex;
+                });
+                const tableCorner = !!(floor && floorKind?.art === 'table' && connections?.includes('W') && !connections.includes('N') && floorObjectsByCell.get(cell(row - 1, col - 1))?.kindId === floor.kindId);
+                const wallObjects = wallObjectsByCell.get(key) ?? [];
                 const fixedBlocked = !!floor && !kindById.get(floor.kindId)?.canOccupy;
                 const note = notes[key];
                 const placement = placementsByCell.get(key);
                 const confirmed = puzzle.suspects.find((suspect) => suspect.id === placement?.suspectId);
                 const candidateIds = note?.type === 'candidates' ? note.suspectIds : [];
-                const mark = fixedBlocked ? '' : note?.type === 'empty' || note?.type === 'blocked' ? 'X' : confirmed ? suspectLetter(confirmed.id) : candidateIds.length ? <span className="candidate-grid" style={{ gridTemplateColumns: `repeat(${Math.max(3, Math.ceil(Math.sqrt(puzzle.suspects.length)))}, 1fr)` }}>{Array.from({ length: Math.max(9, puzzle.suspects.length) }, (_, slot) => <span className="candidate-slot" key={slot}>{puzzle.suspects[slot] && candidateIds.includes(puzzle.suspects[slot].id) ? suspectLetter(puzzle.suspects[slot].id).toLowerCase() : ''}</span>)}</span> : '';
-                return <button key={key} id={`deduction-${key}`} type="button" className={`deduction-cell ${!isPlayable ? 'outside' : ''} ${fixedBlocked ? 'slash' : ''} ${confirmed ? 'confirmed' : ''} ${candidateIds.length ? 'candidates' : ''} ${activeNoteCell === key ? 'active' : ''}`} style={isPlayable && roomIndex !== undefined ? { backgroundColor: ROOM_COLORS[roomIndex % ROOM_COLORS.length], width: deductionCellSize, height: deductionCellSize } : { width: deductionCellSize, height: deductionCellSize }} disabled={!isPlayable || fixedBlocked} aria-pressed={activeNoteCell === key} onFocus={() => { setActiveNoteCell(key); if (personChoices?.cell !== key) setPersonChoices(null); }} onClick={() => { setActiveNoteCell(key); if (noteTool !== 'candidate' && noteTool !== 'confirmed') markCell(key); }} onKeyDown={(event) => handleNoteKeyDown(event, key)} aria-label={`Row ${row + 1}, column ${col + 1}: ${!isPlayable ? 'outside map' : fixedBlocked ? 'blocked by furniture' : confirmed ? `confirmed ${confirmed.name}` : note?.type === 'candidates' ? `possible ${note.suspectIds.map((id) => puzzle.suspects.find((suspect) => suspect.id === id)?.name).join(', ')}` : note?.type === 'empty' || note?.type === 'blocked' ? 'empty' : 'unmarked'}`}>{mark}{diagramWalls?.top && <span className="deduction-wall deduction-wall-top" aria-hidden="true" />}{diagramWalls?.left && <span className="deduction-wall deduction-wall-left" aria-hidden="true" />}{diagramWalls?.bottom && <span className="deduction-wall deduction-wall-bottom" aria-hidden="true" />}{diagramWalls?.right && <span className="deduction-wall deduction-wall-right" aria-hidden="true" />}</button>;
+                const mark = fixedBlocked ? '' : note?.type === 'empty' || note?.type === 'blocked' ? 'X' : confirmed ? <span className={`confirmed-token ${confirmed.isVictim ? 'victim-token' : confirmed.id === murdererId ? 'murderer-token' : ''}`} title={confirmed.isVictim ? 'Victim' : confirmed.id === murdererId ? 'Murderer: alone with the victim' : undefined}>{suspectLetter(confirmed.id)}</span> : candidateIds.length ? <span className="candidate-grid" style={{ gridTemplateColumns: `repeat(${Math.max(3, Math.ceil(Math.sqrt(puzzle.suspects.length)))}, 1fr)` }}>{Array.from({ length: Math.max(9, puzzle.suspects.length) }, (_, slot) => <span className="candidate-slot" key={slot}>{puzzle.suspects[slot] && candidateIds.includes(puzzle.suspects[slot].id) ? suspectLetter(puzzle.suspects[slot].id).toLowerCase() : ''}</span>)}</span> : '';
+                return <button key={key} id={`deduction-${key}`} type="button" className={`deduction-cell ${!isPlayable ? 'outside' : ''} ${fixedBlocked ? 'slash' : ''} ${confirmed ? 'confirmed' : ''} ${candidateIds.length ? 'candidates' : ''} ${activeNoteCell === key ? 'active' : ''} ${showDiagramMap && bedPart === 'first' ? 'map-bed-anchor' : ''} ${showDiagramMap && tableCorner ? 'table-corner' : ''}`} style={isPlayable && roomIndex !== undefined ? { backgroundColor: ROOM_COLORS[roomIndex % ROOM_COLORS.length], width: deductionCellSize, height: deductionCellSize } : { width: deductionCellSize, height: deductionCellSize }} disabled={!isPlayable || fixedBlocked || !!viewPoint} aria-pressed={activeNoteCell === key} onFocus={() => { setActiveNoteCell(key); if (personChoices?.cell !== key) setPersonChoices(null); }} onClick={() => { setActiveNoteCell(key); if (noteTool) markCell(key); }} onKeyDown={(event) => handleNoteKeyDown(event, key)} aria-label={`Row ${row + 1}, column ${col + 1}: ${!isPlayable ? 'outside map' : fixedBlocked ? 'blocked by furniture' : confirmed ? `confirmed ${confirmed.name}` : note?.type === 'candidates' ? `possible ${note.suspectIds.map((id) => puzzle.suspects.find((suspect) => suspect.id === id)?.name).join(', ')}` : note?.type === 'empty' || note?.type === 'blocked' ? 'empty' : 'unmarked'}`}>
+                  {showDiagramMap && isPlayable && <span className="diagram-map-overlay" aria-hidden="true">{floorKind && <ObjectMark kind={floorKind} connections={connections} bedPart={bedPart} bedAxis={bedAxis} bedReverse={floor?.bedDirection === 'W' || floor?.bedDirection === 'N'} />}{wallObjects.map((object) => { const kind = kindById.get(object.kindId); return kind && <ObjectMark key={object.id} kind={kind} className={`wall-object wall-${object.side?.toLowerCase()}`} />; })}</span>}
+                  <span className="deduction-mark">{mark}</span>
+                  {showDiagramMap && tableCorner && <span className="table-corner-join" aria-hidden="true" />}
+                  {diagramWalls?.top && <span className="deduction-wall deduction-wall-top" aria-hidden="true" />}{diagramWalls?.left && <span className="deduction-wall deduction-wall-left" aria-hidden="true" />}{diagramWalls?.bottom && <span className="deduction-wall deduction-wall-bottom" aria-hidden="true" />}{diagramWalls?.right && <span className="deduction-wall deduction-wall-right" aria-hidden="true" />}
+                </button>;
               })}</div></div><label className="scratchpad">Scratch notes<textarea aria-label="Scratch notes" placeholder="Jot down ideas, room possibilities, or anything else…" value={scratchNotes} onChange={(event) => setScratchNotes(event.target.value)} /></label></div>
             </section>}
           </section>
@@ -755,7 +941,7 @@ export default function App() {
               <nav className="sidebar-tabs play-tabs" aria-label="Play case panels">{([['clues', 'Clues'], ['checks', 'Checks']] as const).map(([value, label]) => <button key={value} type="button" className={playTab === value ? 'active' : ''} onClick={() => setPlayTab(value)}>{label}</button>)}</nav>
               {playTab === 'clues' && <section className="card"><div className="card-title"><h2>Clues</h2></div>{puzzle.caseClues.filter(Boolean).map((clue, index) => <p className="clue" key={index}>{clue}</p>)}<p className="hint">Check a person once you have considered every possible spot.</p><div className="person-clues">{puzzle.suspects.map((suspect) => {
                 const placed = placements.find((item) => item.suspectId === suspect.id);
-                return <div className="person-clue" key={suspect.id}><div className="person-clue-heading">{suspect.portrait ? <img className="person-portrait" src={suspect.portrait} alt={`${suspect.name} portrait`} /> : <span className="suspect-avatar">{suspectLetter(suspect.id)}</span>}<div className="person-clue-copy"><strong>{suspectLetter(suspect.id)} · {suspect.name}{suspect.isVictim ? ' · Victim' : ''}</strong><p>{suspect.clue.trim() || 'No clue entered.'}</p>{placed && <small>Placed at row {coordinates(placed.cell)[0] + 1}, column {coordinates(placed.cell)[1] + 1}</small>}</div><label className="checkbox-label considered-check"><input type="checkbox" checked={consideredSuspectIds.includes(suspect.id)} onChange={() => toggleConsidered(suspect.id)} aria-label={`${suspect.name} fully considered`} /></label></div>{placed && <button type="button" className="remove-placement" onClick={() => setBranchWorkspace((current) => changeDeduction(current, (state) => ({ ...state, placements: state.placements.filter((item) => item.suspectId !== suspect.id) })))}>Remove from board</button>}</div>;
+                return <div className="person-clue" key={suspect.id}><div className="person-clue-heading">{suspect.portrait ? <img className="person-portrait" src={suspect.portrait} alt={`${suspect.name} portrait`} /> : <span className="suspect-avatar">{suspectLetter(suspect.id)}</span>}<div className="person-clue-copy"><strong>{suspectLetter(suspect.id)} · {suspect.name}{suspect.isVictim ? ' · Victim' : ''}</strong><p>{suspect.clue.trim() || 'No clue entered.'}</p>{placed && <small>Placed at row {coordinates(placed.cell)[0] + 1}, column {coordinates(placed.cell)[1] + 1}</small>}</div><label className="checkbox-label considered-check"><input type="checkbox" checked={consideredSuspectIds.includes(suspect.id)} onChange={() => toggleConsidered(suspect.id)} aria-label={`${suspect.name} fully considered`} /></label></div></div>;
               })}</div>{!puzzle.caseClues.some(Boolean) && puzzle.suspects.length === 0 && <p className="empty-note">No clues entered yet.</p>}</section>}
               {playTab === 'checks' && playProblems.length > 0 && <section className="card issue-card" role="status"><h2>Check these placements</h2><ul>{playProblems.map((problem) => <li key={problem}>{problem}</li>)}</ul></section>}
               {playTab === 'checks' && playProblems.length === 0 && <section className="card good-card"><strong>No placement conflicts</strong><p>Clue text is for manual deduction in this first version.</p></section>}
