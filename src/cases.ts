@@ -9,6 +9,7 @@ export type SavedCase = {
   puzzle: Puzzle;
   branchWorkspace: BranchWorkspace;
   consideredSuspectIds: string[];
+  scratchNotes: string;
   lastMode: CaseMode;
   updatedAt: string;
 };
@@ -42,6 +43,7 @@ export function parseSavedCase(input: unknown): SavedCase | null {
       puzzle,
       branchWorkspace: parseBranchWorkspace(raw.branchWorkspace, puzzle, legacyDeduction(raw, puzzle)),
       consideredSuspectIds,
+      scratchNotes: typeof raw.scratchNotes === 'string' ? raw.scratchNotes : '',
       lastMode: raw.lastMode === 'play' ? 'play' : 'edit',
       updatedAt: typeof raw.updatedAt === 'string' && !Number.isNaN(Date.parse(raw.updatedAt)) ? raw.updatedAt : new Date().toISOString(),
     };
@@ -76,7 +78,7 @@ export function parseCaseLibrary(rawLibrary: string | null, rawLegacy: string | 
 }
 
 export function newSavedCase(puzzle: Puzzle, mode: CaseMode = 'edit'): SavedCase {
-  return { puzzle, branchWorkspace: newBranchWorkspace(), consideredSuspectIds: [], lastMode: mode, updatedAt: new Date().toISOString() };
+  return { puzzle, branchWorkspace: newBranchWorkspace(), consideredSuspectIds: [], scratchNotes: '', lastMode: mode, updatedAt: new Date().toISOString() };
 }
 
 export function upsertCase(cases: SavedCase[], saved: SavedCase): SavedCase[] {

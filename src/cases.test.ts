@@ -19,6 +19,12 @@ describe('case library', () => {
       .toEqual([next.puzzle.id, puzzle.id]);
   });
 
+  it('retains scratch notes when a case is saved and reopened', () => {
+    const saved = { ...newSavedCase(newPuzzle()), scratchNotes: 'Maybe the study is empty.\nCheck the glasses clue.' };
+    const [reopened] = parseCaseLibrary(JSON.stringify({ version: 1, cases: [saved] }), null);
+    expect(reopened.scratchNotes).toBe(saved.scratchNotes);
+  });
+
   it('fills only eligible cells in the chosen line and can undo the Xs', () => {
     let puzzle = newPuzzle();
     puzzle = placeObject(puzzle, 'table', cell(0, 2));
