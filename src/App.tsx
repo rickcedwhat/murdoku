@@ -31,7 +31,7 @@ type NoteTool = 'erase' | null;
 const ROOM_COLORS = ['#d9e9df', '#f5e5cd', '#dce7f2', '#eadff0', '#f4deda', '#e8ebd6', '#e5dfea', '#dbece9'];
 const HIDDEN_BUNDLED_CASES_KEY = 'murdoku-hidden-bundled-cases-v1';
 
-type HistoryEntry = { kind: 'point'; point: HistoryPoint } | { kind: 'fold'; id: string; count: number; expanded: boolean; branchId: string };
+type HistoryEntry = { kind: 'point'; point: HistoryPoint } | { kind: 'fold'; id: string; count: number; expanded: boolean; branchId: string; hiddenIds: string[]; parentId: string };
 
 function historyEntries(points: HistoryPoint[], expandedIds: string[]): HistoryEntry[] {
   const children = new Map<string, HistoryPoint[]>();
@@ -58,13 +58,41 @@ function historyEntries(points: HistoryPoint[], expandedIds: string[]): HistoryE
     else {
       const id = `${run[0].id}:${run.at(-1)!.id}`;
       const expanded = expandedIds.includes(id);
-      entries.push({ kind: 'point', point: run[0] }, { kind: 'point', point: run[1] }, { kind: 'fold', id, count: run.length - 3, expanded, branchId: point.branchId });
+      entries.push({ kind: 'point', point: run[0] }, { kind: 'point', point: run[1] }, { kind: 'fold', id, count: run.length - 3, expanded, branchId: point.branchId, hiddenIds: run.slice(2, -1).map((item) => item.id), parentId: run.at(-1)!.id });
       if (expanded) entries.push(...run.slice(2, -1).map((item): HistoryEntry => ({ kind: 'point', point: item })));
       entries.push({ kind: 'point', point: run.at(-1)! });
     }
     index = end;
   }
   return entries;
+}
+
+function historyPaths(entries: HistoryEntry[], points: HistoryPoint[], branches: BranchWorkspace['branches']): string[] {
+  const pointById = new Map(points.map((point) => [point.id, point]));
+  const visible = new Map<string, number>();
+  entries.forEach((entry, index) => {
+    if (entry.kind === 'point') visible.set(entry.point.id, index);
+    else if (!entry.expanded) entry.hiddenIds.forEach((id) => visible.set(id, index));
+  });
+  const laneX = (branchId: string) => 12 + Math.max(0, branches.findIndex((branch) => branch.id === branchId)) * 23;
+  const rowY = (index: number) => index * 39 + 20;
+  const paths = new Set<string>();
+  entries.forEach((entry, index) => {
+    if (entry.kind === 'fold' && entry.expanded) return;
+    let parentId = entry.kind === 'point' ? entry.point.parentId : entry.parentId;
+    while (parentId && !visible.has(parentId)) parentId = pointById.get(parentId)?.parentId;
+    if (!parentId) return;
+    const parentIndex = visible.get(parentId)!;
+    if (parentIndex === index) return;
+    const branchId = entry.kind === 'point' ? entry.point.branchId : entry.branchId;
+    const parentBranchId = pointById.get(parentId)?.branchId ?? branchId;
+    const x = laneX(branchId);
+    const parentX = laneX(parentBranchId);
+    const y = rowY(index);
+    const parentY = rowY(parentIndex);
+    paths.add(x === parentX ? `M ${x} ${y} V ${parentY}` : `M ${x} ${y} V ${parentY} H ${parentX}`);
+  });
+  return [...paths];
 }
 
 function loadCases(): SavedCase[] {
@@ -222,8 +250,9 @@ export default function App() {
   const activeBranch = activeHypothesis(branchWorkspace);
   const viewPoint = branchWorkspace.points?.find((point) => point.id === viewPointId);
   const history = useMemo(() => historyEntries(branchWorkspace.points ?? [], expandedHistory), [branchWorkspace.points, expandedHistory]);
+  const historyLines = useMemo(() => historyPaths(history, branchWorkspace.points ?? [], branchWorkspace.branches), [history, branchWorkspace.points, branchWorkspace.branches]);
   const viewedTip = viewPoint && branchWorkspace.branches.find((branch) => branch.headPointId === viewPoint.id);
-  const { placements, notes } = viewedTip?.present ?? viewPoint?.state ?? activeBranch.present;
+  const { placements, notes } = viewPoint?.kind === 'start' ? viewPoint.state : viewedTip?.present ?? viewPoint?.state ?? activeBranch.present;
   const placementsByCell = useMemo(() => new Map(placements.map((placement) => [placement.cell, placement])), [placements]);
   const victimId = puzzle.suspects.find((suspect) => suspect.isVictim)?.id;
   const victimPlacement = placements.find((placement) => placement.suspectId === victimId);
@@ -741,15 +770,15 @@ export default function App() {
               <div className="deduction-heading"><div><p className="eyebrow">DEDUCTION GRID</p><h2>Your notes</h2></div><div className="diagram-heading-actions"><button type="button" className="diagram-map-toggle" aria-pressed={overlayPinned} onClick={() => setOverlayPinned((current) => !current)}>{overlayPinned ? 'Hide map' : 'Show map'}</button><span className="dimension-badge">{placements.length} confirmed</span></div></div>
               <div className="branch-panel" aria-label="History">
                 <div className="branch-heading"><strong>History</strong><span>Newest at top · Start at bottom</span></div>
-                <div className="history-graph" role="list" aria-label="Deduction history">{history.map((entry) => {
+                <div className="history-graph" role="list" aria-label="Deduction history"><div className="history-track"><svg className="history-lines" aria-hidden="true" width="100%" height={history.length * 39}><g fill="none" stroke="#a9beb2" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{historyLines.map((path) => <path key={path} d={path} />)}</g></svg>{history.map((entry) => {
                   const lane = Math.max(0, branchWorkspace.branches.findIndex((branch) => branch.id === (entry.kind === 'point' ? entry.point.branchId : entry.branchId)));
                   if (entry.kind === 'fold') return <div className="history-row history-fold" role="listitem" key={entry.id} style={{ '--lane-offset': `${lane * 23}px` } as CSSProperties}><span className="history-rail" aria-hidden="true" /><button type="button" aria-expanded={entry.expanded} onClick={() => setExpandedHistory((current) => entry.expanded ? current.filter((id) => id !== entry.id) : [...current, entry.id])}>{entry.expanded ? 'Show fewer points' : `Show ${entry.count} earlier points`}</button></div>;
                   const point = entry.point;
                   const person = puzzle.suspects.find((suspect) => suspect.id === point.suspectId);
                   const label = point.kind === 'start' ? 'Start · empty board' : point.kind === 'confirmed' ? person?.name ?? 'Person confirmed' : point.name || 'Checkpoint';
                   const tip = branchWorkspace.branches.some((branch) => branch.headPointId === point.id);
-                  return <div className={`history-row ${point.kind === 'branch' ? 'history-fork' : ''} ${viewPointId === point.id ? 'viewing' : ''} ${!viewPoint && activeBranch.headPointId === point.id ? 'current' : ''}`} role="listitem" key={point.id} style={{ '--lane-offset': `${lane * 23}px` } as CSSProperties}><span className={`history-rail ${point.kind}`} aria-hidden="true" /><button type="button" onClick={() => { setViewPointId(point.id); setActiveNoteCell(null); setPersonChoices(null); }}><strong>{label}</strong><small>{tip ? 'Branch tip' : point.kind === 'confirmed' ? 'Confirmed' : point.kind === 'branch' ? 'Branch' : point.kind === 'start' ? 'Beginning' : 'Checkpoint'}{!viewPoint && activeBranch.headPointId === point.id ? ' · current' : ''}</small></button></div>;
-                })}</div>
+                  return <div className={`history-row ${viewPointId === point.id ? 'viewing' : ''} ${!viewPoint && activeBranch.headPointId === point.id ? 'current' : ''}`} role="listitem" key={point.id} style={{ '--lane-offset': `${lane * 23}px` } as CSSProperties}><span className={`history-rail ${point.kind}`} aria-hidden="true" /><button type="button" onClick={() => { setViewPointId(point.id); setActiveNoteCell(null); setPersonChoices(null); }}><strong>{label}</strong><small>{point.kind === 'start' ? 'Beginning' : tip ? 'Branch tip' : point.kind === 'confirmed' ? 'Confirmed' : point.kind === 'branch' ? 'Branch' : 'Checkpoint'}{!viewPoint && activeBranch.headPointId === point.id ? ' · current' : ''}</small></button></div>;
+                })}</div></div>
                 {viewPoint ? <div className="history-preview"><p>Viewing {viewPoint.kind === 'confirmed' ? puzzle.suspects.find((suspect) => suspect.id === viewPoint.suspectId)?.name ?? 'confirmation' : viewPoint.name ?? 'Start'} · read-only</p><div className="branch-actions">{viewedTip && <button type="button" onClick={() => { setBranchWorkspace((current) => continueFromPoint(current, viewPoint.id)); setViewPointId(null); }}>Continue on {viewedTip.name}</button>}<button type="button" onClick={() => { setBranchWorkspace((current) => createHypothesis(current, viewPoint.consideredSuspectIds ?? consideredSuspectIds, viewPoint.id)); if (viewPoint.consideredSuspectIds) setConsideredSuspectIds([...viewPoint.consideredSuspectIds]); setViewPointId(null); }}>Branch from here</button><button type="button" onClick={() => setViewPointId(null)}>Cancel preview</button></div></div> : <p className="history-preview">Select a point to inspect it or switch branches.</p>}
                 {!viewPoint && <><div className="checkpoint-actions"><input aria-label="Checkpoint name" placeholder="Checkpoint name (optional)" value={checkpointName} onChange={(event) => setCheckpointName(event.target.value)} /><button type="button" onClick={() => { setBranchWorkspace((current) => saveCheckpoint(current, consideredSuspectIds, checkpointName)); setCheckpointName(''); }}>Save checkpoint</button></div>
                   {activeBranch.id !== 'main' && <label className="branch-name">Branch name<input aria-label="Branch name" value={activeBranch.name} onChange={(event) => setBranchWorkspace((current) => renameHypothesis(current, activeBranch.id, event.target.value))} /></label>}

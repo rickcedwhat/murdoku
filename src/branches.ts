@@ -93,7 +93,7 @@ export function restoreCheckpoint(workspace: BranchWorkspace): BranchWorkspace {
 export function createHypothesis(workspace: BranchWorkspace, consideredSuspectIds: string[] = [], fromPointId?: string): BranchWorkspace {
   const sourcePoint = workspace.points?.find((point) => point.id === fromPointId);
   const sourceTip = workspace.branches.find((branch) => branch.headPointId === sourcePoint?.id);
-  const state = sourceTip?.present ?? sourcePoint?.state ?? activeHypothesis(workspace).present;
+  const state = sourcePoint?.kind === 'start' ? sourcePoint.state : sourceTip?.present ?? sourcePoint?.state ?? activeHypothesis(workspace).present;
   let count = 1;
   while (workspace.branches.some((branch) => branch.name === `Branch ${count}`)) count += 1;
   const branch: Hypothesis = { id: crypto.randomUUID(), name: `Branch ${count}`, present: copyDeduction(state), undo: [], redo: [] };

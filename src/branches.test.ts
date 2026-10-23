@@ -35,6 +35,16 @@ describe('hypothesis branches', () => {
     expect(workspace.activeId).toBe('main');
   });
 
+  it('branches from Start with an empty board even when Main has only uncheckpointed notes', () => {
+    const puzzle = newPuzzle();
+    let workspace = changeDeduction(newBranchWorkspace(), mark(cell(0, 0), puzzle.suspects[0].id));
+    const start = workspace.points![0];
+    expect(workspace.branches[0].headPointId).toBe(start.id);
+    expect(start.state).toEqual({ placements: [], notes: {} });
+    workspace = createHypothesis(workspace, [], start.id);
+    expect(activeHypothesis(workspace).present).toEqual({ placements: [], notes: {} });
+  });
+
   it('compacts repeated confirmations for one person when loading older history', () => {
     const puzzle = newPuzzle();
     const personId = puzzle.suspects[0].id;
