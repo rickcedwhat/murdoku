@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from 'react';
 import {
   assignCellToRoom,
   cell,
@@ -19,7 +19,7 @@ import {
   type WallSide,
 } from './puzzle';
 import { ObjectMark } from './ObjectMark';
-import { activeHypothesis, changeDeduction, createHypothesis, discardHypothesis, newBranchWorkspace, reconcileBranches, redoDeduction, renameHypothesis, saveCheckpoint, switchHypothesis, undoDeduction, type BranchWorkspace } from './branches';
+import { activeHypothesis, changeDeduction, continueFromPoint, createHypothesis, discardHypothesis, newBranchWorkspace, reconcileBranches, redoDeduction, renameHypothesis, saveCheckpoint, undoDeduction, type BranchWorkspace, type HistoryPoint } from './branches';
 import { CASE_LIBRARY_KEY, LEGACY_CASE_KEY, fillLineWithXs, importTargetsActiveCase, newSavedCase, parseCaseLibrary, removeConfirmedCandidate, upsertCase, type SavedCase } from './cases';
 import { suspectLetter as letterForSuspect, suspectsForInitial } from './suspectLetters';
 import collegeDormitoryJson from '../local-cases/46-college-dormitory.json';
@@ -30,6 +30,42 @@ type EditorTab = 'setup' | 'rooms' | 'furniture' | 'people' | 'rules';
 type NoteTool = 'erase' | null;
 const ROOM_COLORS = ['#d9e9df', '#f5e5cd', '#dce7f2', '#eadff0', '#f4deda', '#e8ebd6', '#e5dfea', '#dbece9'];
 const HIDDEN_BUNDLED_CASES_KEY = 'murdoku-hidden-bundled-cases-v1';
+
+type HistoryEntry = { kind: 'point'; point: HistoryPoint } | { kind: 'fold'; id: string; count: number; expanded: boolean; branchId: string };
+
+function historyEntries(points: HistoryPoint[], expandedIds: string[]): HistoryEntry[] {
+  const children = new Map<string, HistoryPoint[]>();
+  for (const point of points) if (point.parentId) children.set(point.parentId, [...(children.get(point.parentId) ?? []), point]);
+  const ordered: HistoryPoint[] = [];
+  const visited = new Set<string>();
+  const visit = (point: HistoryPoint) => {
+    if (visited.has(point.id)) return;
+    visited.add(point.id);
+    ordered.push(point);
+    for (const child of [...(children.get(point.id) ?? [])].sort((left, right) => Number(left.branchId === point.branchId) - Number(right.branchId === point.branchId))) visit(child);
+  };
+  for (const point of points) if (point.kind === 'start') visit(point);
+  for (const point of points) visit(point);
+  const newestFirst = ordered.reverse();
+  const entries: HistoryEntry[] = [];
+  for (let index = 0; index < newestFirst.length;) {
+    const point = newestFirst[index];
+    if (point.kind !== 'confirmed') { entries.push({ kind: 'point', point }); index += 1; continue; }
+    let end = index + 1;
+    while (end < newestFirst.length && newestFirst[end].kind === 'confirmed' && newestFirst[end].branchId === point.branchId) end += 1;
+    const run = newestFirst.slice(index, end);
+    if (run.length <= 3) entries.push(...run.map((item): HistoryEntry => ({ kind: 'point', point: item })));
+    else {
+      const id = `${run[0].id}:${run.at(-1)!.id}`;
+      const expanded = expandedIds.includes(id);
+      entries.push({ kind: 'point', point: run[0] }, { kind: 'point', point: run[1] }, { kind: 'fold', id, count: run.length - 3, expanded, branchId: point.branchId });
+      if (expanded) entries.push(...run.slice(2, -1).map((item): HistoryEntry => ({ kind: 'point', point: item })));
+      entries.push({ kind: 'point', point: run.at(-1)! });
+    }
+    index = end;
+  }
+  return entries;
+}
 
 function loadCases(): SavedCase[] {
   try {
@@ -69,6 +105,7 @@ export default function App() {
   const [overlayHeld, setOverlayHeld] = useState(false);
   const [viewPointId, setViewPointId] = useState<string | null>(null);
   const [checkpointName, setCheckpointName] = useState('');
+  const [expandedHistory, setExpandedHistory] = useState<string[]>([]);
   const [notice, setNotice] = useState('');
   const [saveFailed, setSaveFailed] = useState(false);
   const [cellWidth, setCellWidth] = useState(58);
@@ -184,7 +221,9 @@ export default function App() {
   const kindById = useMemo(() => new Map(puzzle.objectKinds.map((kind) => [kind.id, kind])), [puzzle.objectKinds]);
   const activeBranch = activeHypothesis(branchWorkspace);
   const viewPoint = branchWorkspace.points?.find((point) => point.id === viewPointId);
-  const { placements, notes } = viewPoint?.state ?? activeBranch.present;
+  const history = useMemo(() => historyEntries(branchWorkspace.points ?? [], expandedHistory), [branchWorkspace.points, expandedHistory]);
+  const viewedTip = viewPoint && branchWorkspace.branches.find((branch) => branch.headPointId === viewPoint.id);
+  const { placements, notes } = viewedTip?.present ?? viewPoint?.state ?? activeBranch.present;
   const placementsByCell = useMemo(() => new Map(placements.map((placement) => [placement.cell, placement])), [placements]);
   const victimId = puzzle.suspects.find((suspect) => suspect.isVictim)?.id;
   const victimPlacement = placements.find((placement) => placement.suspectId === victimId);
@@ -702,15 +741,16 @@ export default function App() {
               <div className="deduction-heading"><div><p className="eyebrow">DEDUCTION GRID</p><h2>Your notes</h2></div><div className="diagram-heading-actions"><button type="button" className="diagram-map-toggle" aria-pressed={overlayPinned} onClick={() => setOverlayPinned((current) => !current)}>{overlayPinned ? 'Hide map' : 'Show map'}</button><span className="dimension-badge">{placements.length} confirmed</span></div></div>
               <div className="branch-panel" aria-label="History">
                 <div className="branch-heading"><strong>History</strong><span>Newest at top · Start at bottom</span></div>
-                <div className="branch-list" role="group" aria-label="Choose branch">{branchWorkspace.branches.map((branch) => <button key={branch.id} type="button" className={branchWorkspace.activeId === branch.id && !viewPoint ? 'selected' : ''} aria-pressed={branchWorkspace.activeId === branch.id && !viewPoint} onClick={() => { setViewPointId(null); setBranchWorkspace((current) => switchHypothesis(current, branch.id)); }}>{branch.name}</button>)}</div>
-                <div className="history-graph" role="list" aria-label="Deduction history">{[...(branchWorkspace.points ?? [])].reverse().map((point) => {
-                  const lane = Math.max(0, branchWorkspace.branches.findIndex((branch) => branch.id === point.branchId));
+                <div className="history-graph" role="list" aria-label="Deduction history">{history.map((entry) => {
+                  const lane = Math.max(0, branchWorkspace.branches.findIndex((branch) => branch.id === (entry.kind === 'point' ? entry.point.branchId : entry.branchId)));
+                  if (entry.kind === 'fold') return <div className="history-row history-fold" role="listitem" key={entry.id} style={{ '--lane-offset': `${lane * 23}px` } as CSSProperties}><span className="history-rail" aria-hidden="true" /><button type="button" aria-expanded={entry.expanded} onClick={() => setExpandedHistory((current) => entry.expanded ? current.filter((id) => id !== entry.id) : [...current, entry.id])}>{entry.expanded ? 'Show fewer points' : `Show ${entry.count} earlier points`}</button></div>;
+                  const point = entry.point;
                   const person = puzzle.suspects.find((suspect) => suspect.id === point.suspectId);
                   const label = point.kind === 'start' ? 'Start · empty board' : point.kind === 'confirmed' ? person?.name ?? 'Person confirmed' : point.name || 'Checkpoint';
-                  return <div className={`history-row ${viewPointId === point.id ? 'viewing' : ''} ${!viewPoint && activeBranch.headPointId === point.id ? 'current' : ''}`} role="listitem" key={point.id} style={{ paddingLeft: lane * 23 + 4 }}><span className={`history-rail ${point.kind}`} aria-hidden="true" /><button type="button" onClick={() => { setViewPointId(point.id); setActiveNoteCell(null); setPersonChoices(null); }}><strong>{label}</strong><small>{point.kind === 'confirmed' ? 'Confirmed' : point.kind === 'branch' ? 'Branch' : point.kind === 'start' ? 'Beginning' : 'Checkpoint'}{!viewPoint && activeBranch.headPointId === point.id ? ' · current' : ''}</small></button></div>;
+                  const tip = branchWorkspace.branches.some((branch) => branch.headPointId === point.id);
+                  return <div className={`history-row ${point.kind === 'branch' ? 'history-fork' : ''} ${viewPointId === point.id ? 'viewing' : ''} ${!viewPoint && activeBranch.headPointId === point.id ? 'current' : ''}`} role="listitem" key={point.id} style={{ '--lane-offset': `${lane * 23}px` } as CSSProperties}><span className={`history-rail ${point.kind}`} aria-hidden="true" /><button type="button" onClick={() => { setViewPointId(point.id); setActiveNoteCell(null); setPersonChoices(null); }}><strong>{label}</strong><small>{tip ? 'Branch tip' : point.kind === 'confirmed' ? 'Confirmed' : point.kind === 'branch' ? 'Branch' : point.kind === 'start' ? 'Beginning' : 'Checkpoint'}{!viewPoint && activeBranch.headPointId === point.id ? ' · current' : ''}</small></button></div>;
                 })}</div>
-                {viewPoint && <p className="history-preview">Viewing {viewPoint.kind === 'confirmed' ? puzzle.suspects.find((suspect) => suspect.id === viewPoint.suspectId)?.name ?? 'confirmation' : viewPoint.name ?? 'Start'}. The board is read-only.</p>}
-                <div className="branch-actions"><button type="button" onClick={() => { setBranchWorkspace((current) => createHypothesis(current, viewPoint?.consideredSuspectIds ?? consideredSuspectIds, viewPoint?.id)); if (viewPoint?.consideredSuspectIds) setConsideredSuspectIds([...viewPoint.consideredSuspectIds]); setViewPointId(null); }}>+ Branch from {viewPoint ? 'here' : 'current'}</button>{viewPoint && <button type="button" onClick={() => setViewPointId(null)}>Back to current</button>}</div>
+                {viewPoint ? <div className="history-preview"><p>Viewing {viewPoint.kind === 'confirmed' ? puzzle.suspects.find((suspect) => suspect.id === viewPoint.suspectId)?.name ?? 'confirmation' : viewPoint.name ?? 'Start'} · read-only</p><div className="branch-actions">{viewedTip && <button type="button" onClick={() => { setBranchWorkspace((current) => continueFromPoint(current, viewPoint.id)); setViewPointId(null); }}>Continue on {viewedTip.name}</button>}<button type="button" onClick={() => { setBranchWorkspace((current) => createHypothesis(current, viewPoint.consideredSuspectIds ?? consideredSuspectIds, viewPoint.id)); if (viewPoint.consideredSuspectIds) setConsideredSuspectIds([...viewPoint.consideredSuspectIds]); setViewPointId(null); }}>Branch from here</button><button type="button" onClick={() => setViewPointId(null)}>Cancel preview</button></div></div> : <p className="history-preview">Select a point to inspect it or switch branches.</p>}
                 {!viewPoint && <><div className="checkpoint-actions"><input aria-label="Checkpoint name" placeholder="Checkpoint name (optional)" value={checkpointName} onChange={(event) => setCheckpointName(event.target.value)} /><button type="button" onClick={() => { setBranchWorkspace((current) => saveCheckpoint(current, consideredSuspectIds, checkpointName)); setCheckpointName(''); }}>Save checkpoint</button></div>
                   {activeBranch.id !== 'main' && <label className="branch-name">Branch name<input aria-label="Branch name" value={activeBranch.name} onChange={(event) => setBranchWorkspace((current) => renameHypothesis(current, activeBranch.id, event.target.value))} /></label>}
                   {activeBranch.id !== 'main' && <div className="branch-actions branch-outcomes"><button type="button" onClick={() => { setBranchWorkspace(discardHypothesis); setViewPointId(null); }}>Discard branch</button></div>}

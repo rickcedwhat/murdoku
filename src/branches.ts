@@ -18,7 +18,9 @@ function copyDeduction(state: Deduction): Deduction {
 
 export function newBranchWorkspace(initial: Deduction = { placements: [], notes: {} }): BranchWorkspace {
   const start: HistoryPoint = { id: crypto.randomUUID(), branchId: 'main', kind: 'start', state: { placements: [], notes: {} } };
-  return { branches: [{ id: 'main', name: 'Main', present: copyDeduction(initial), undo: [], redo: [], headPointId: start.id }], activeId: 'main', points: [start] };
+  const points = [start];
+  for (const placement of initial.placements) points.push({ id: crypto.randomUUID(), parentId: points.at(-1)!.id, branchId: 'main', kind: 'confirmed', suspectId: placement.suspectId, state: { placements: [...points.at(-1)!.state.placements, { ...placement }], notes: copyDeduction(initial).notes } });
+  return { branches: [{ id: 'main', name: 'Main', present: copyDeduction(initial), undo: [], redo: [], headPointId: points.at(-1)!.id }], activeId: 'main', points };
 }
 
 export function activeHypothesis(workspace: BranchWorkspace): Hypothesis {
@@ -29,26 +31,50 @@ function updateBranch(workspace: BranchWorkspace, id: string, update: (branch: H
   return { ...workspace, branches: workspace.branches.map((branch) => branch.id === id ? update(branch) : branch) };
 }
 
+function samePlacements(left: Deduction, right: Deduction): boolean {
+  return left.placements.length === right.placements.length && left.placements.every((item) => right.placements.some((other) => other.suspectId === item.suspectId && other.cell === item.cell));
+}
+
+function headForState(workspace: BranchWorkspace, branch: Hypothesis, state: Deduction): string | undefined {
+  return [...(workspace.points ?? [])].reverse().find((point) => point.branchId === branch.id && samePlacements(point.state, state))?.id ?? branch.headPointId;
+}
+
+function pruneUnreachablePoints(workspace: BranchWorkspace): BranchWorkspace {
+  const byId = new Map((workspace.points ?? []).map((point) => [point.id, point]));
+  const keep = new Set<string>();
+  for (const branch of workspace.branches) {
+    let id = branch.headPointId;
+    while (id && !keep.has(id)) {
+      keep.add(id);
+      id = byId.get(id)?.parentId;
+    }
+  }
+  return { ...workspace, points: workspace.points?.filter((point) => keep.has(point.id)) };
+}
+
 export function changeDeduction(workspace: BranchWorkspace, update: (state: Deduction) => Deduction): BranchWorkspace {
   const current = activeHypothesis(workspace);
   const next = update(copyDeduction(current.present));
   if (JSON.stringify(next) === JSON.stringify(current.present)) return workspace;
+  const base = current.redo.length ? pruneUnreachablePoints(workspace) : workspace;
   const added = next.placements.filter((item) => !current.present.placements.some((old) => old.suspectId === item.suspectId && old.cell === item.cell));
   const point: HistoryPoint | undefined = added.length ? { id: crypto.randomUUID(), parentId: current.headPointId, branchId: current.id, kind: 'confirmed', suspectId: added[0].suspectId, state: copyDeduction(next) } : undefined;
-  const updated = updateBranch(workspace, current.id, (branch) => ({ ...branch, present: copyDeduction(next), undo: [...branch.undo, copyDeduction(branch.present)].slice(-HISTORY_LIMIT), redo: [], headPointId: point?.id ?? branch.headPointId }));
-  return point ? { ...updated, points: [...(workspace.points ?? []), point] } : updated;
+  const updated = updateBranch(base, current.id, (branch) => ({ ...branch, present: copyDeduction(next), undo: [...branch.undo, copyDeduction(branch.present)].slice(-HISTORY_LIMIT), redo: [], headPointId: point?.id ?? branch.headPointId }));
+  return point ? { ...updated, points: [...(base.points ?? []), point] } : updated;
 }
 
 export function undoDeduction(workspace: BranchWorkspace): BranchWorkspace {
   const current = activeHypothesis(workspace);
   if (!current.undo.length) return workspace;
-  return updateBranch(workspace, current.id, (branch) => ({ ...branch, present: branch.undo[branch.undo.length - 1], undo: branch.undo.slice(0, -1), redo: [...branch.redo, copyDeduction(branch.present)] }));
+  const state = current.undo[current.undo.length - 1];
+  return updateBranch(workspace, current.id, (branch) => ({ ...branch, present: state, undo: branch.undo.slice(0, -1), redo: [...branch.redo, copyDeduction(branch.present)], headPointId: headForState(workspace, branch, state) }));
 }
 
 export function redoDeduction(workspace: BranchWorkspace): BranchWorkspace {
   const current = activeHypothesis(workspace);
   if (!current.redo.length) return workspace;
-  return updateBranch(workspace, current.id, (branch) => ({ ...branch, present: branch.redo[branch.redo.length - 1], redo: branch.redo.slice(0, -1), undo: [...branch.undo, copyDeduction(branch.present)].slice(-HISTORY_LIMIT) }));
+  const state = current.redo[current.redo.length - 1];
+  return updateBranch(workspace, current.id, (branch) => ({ ...branch, present: state, redo: branch.redo.slice(0, -1), undo: [...branch.undo, copyDeduction(branch.present)].slice(-HISTORY_LIMIT), headPointId: headForState(workspace, branch, state) }));
 }
 
 export function saveCheckpoint(workspace: BranchWorkspace, consideredSuspectIds: string[] = [], name?: string): BranchWorkspace {
@@ -66,17 +92,23 @@ export function restoreCheckpoint(workspace: BranchWorkspace): BranchWorkspace {
 
 export function createHypothesis(workspace: BranchWorkspace, consideredSuspectIds: string[] = [], fromPointId?: string): BranchWorkspace {
   const sourcePoint = workspace.points?.find((point) => point.id === fromPointId);
-  const state = sourcePoint?.state ?? activeHypothesis(workspace).present;
+  const sourceTip = workspace.branches.find((branch) => branch.headPointId === sourcePoint?.id);
+  const state = sourceTip?.present ?? sourcePoint?.state ?? activeHypothesis(workspace).present;
   let count = 1;
   while (workspace.branches.some((branch) => branch.name === `Branch ${count}`)) count += 1;
   const branch: Hypothesis = { id: crypto.randomUUID(), name: `Branch ${count}`, present: copyDeduction(state), undo: [], redo: [] };
   const point: HistoryPoint = { id: crypto.randomUUID(), parentId: sourcePoint?.id ?? activeHypothesis(workspace).headPointId, branchId: branch.id, kind: 'branch', name: branch.name, state: copyDeduction(state), consideredSuspectIds: [...consideredSuspectIds] };
   branch.headPointId = point.id;
-  return { ...workspace, branches: [...workspace.branches, branch], activeId: branch.id, points: [...(workspace.points ?? []), point], checkpoint: workspace.checkpoint ?? { name: `Checkpoint from ${activeHypothesis(workspace).name}`, state: copyDeduction(state), consideredSuspectIds: [...consideredSuspectIds] } };
+  return { ...workspace, branches: [...workspace.branches, branch], activeId: branch.id, points: [...(workspace.points ?? []), point] };
 }
 
 export function switchHypothesis(workspace: BranchWorkspace, id: string): BranchWorkspace {
   return workspace.branches.some((branch) => branch.id === id) ? { ...workspace, activeId: id } : workspace;
+}
+
+export function continueFromPoint(workspace: BranchWorkspace, pointId: string): BranchWorkspace {
+  const branch = workspace.branches.find((item) => item.headPointId === pointId);
+  return branch ? { ...workspace, activeId: branch.id } : workspace;
 }
 
 export function renameHypothesis(workspace: BranchWorkspace, id: string, name: string): BranchWorkspace {
@@ -128,7 +160,6 @@ function migrateHistory(workspace: BranchWorkspace): BranchWorkspace {
   if (workspace.points?.length) return workspace;
   const start: HistoryPoint = { id: crypto.randomUUID(), branchId: 'main', kind: 'start', state: { placements: [], notes: {} } };
   const points: HistoryPoint[] = [start];
-  const samePlacements = (left: Deduction, right: Deduction) => left.placements.length === right.placements.length && left.placements.every((placement) => right.placements.some((other) => other.suspectId === placement.suspectId && other.cell === placement.cell));
   const branches = workspace.branches.map((branch) => {
     let parentId = start.id;
     if (branch.id !== 'main') {
@@ -151,7 +182,7 @@ function migrateHistory(workspace: BranchWorkspace): BranchWorkspace {
     }
     return { ...branch, headPointId: parentId };
   });
-  if (workspace.checkpoint) {
+  if (workspace.checkpoint && !workspace.checkpoint.name.startsWith('Checkpoint from ')) {
     const branch = branches.find((item) => item.id === workspace.activeId) ?? branches[0];
     const source = [...points].reverse().find((point) => samePlacements(point.state, workspace.checkpoint!.state));
     const point: HistoryPoint = { id: crypto.randomUUID(), parentId: source?.id ?? branch.headPointId, branchId: source?.branchId ?? branch.id, kind: 'checkpoint', name: workspace.checkpoint.name, state: copyDeduction(workspace.checkpoint.state), consideredSuspectIds: workspace.checkpoint.consideredSuspectIds };
@@ -159,6 +190,24 @@ function migrateHistory(workspace: BranchWorkspace): BranchWorkspace {
     if (JSON.stringify(branch.present) === JSON.stringify(workspace.checkpoint.state)) branch.headPointId = point.id;
   }
   return { ...workspace, branches, points };
+}
+
+function compactReplayPoints(workspace: BranchWorkspace): BranchWorkspace {
+  const points = [...(workspace.points ?? [])];
+  const removed = new Map<string, string>();
+  for (let index = 1; index < points.length; index += 1) {
+    const point = points[index];
+    const parentIndex = points.findIndex((item) => item.id === point.parentId);
+    const parent = points[parentIndex];
+    if (point.kind !== 'confirmed' || parent?.kind !== 'confirmed' || point.branchId !== parent.branchId || point.suspectId !== parent.suspectId) continue;
+    if (points.some((item) => item.id !== point.id && item.parentId === parent.id)) continue;
+    point.parentId = parent.parentId;
+    removed.set(parent.id, point.id);
+    points.splice(parentIndex, 1);
+    if (parentIndex < index) index -= 1;
+  }
+  const resolve = (id?: string) => { while (id && removed.has(id)) id = removed.get(id); return id; };
+  return { ...workspace, points: points.map((point) => ({ ...point, parentId: resolve(point.parentId) })), branches: workspace.branches.map((branch) => ({ ...branch, headPointId: resolve(branch.headPointId) })) };
 }
 
 export function parseBranchWorkspace(input: unknown, puzzle: Puzzle, legacy: Deduction): BranchWorkspace {
@@ -172,5 +221,5 @@ export function parseBranchWorkspace(input: unknown, puzzle: Puzzle, legacy: Ded
     consideredSuspectIds: Array.isArray(candidate.checkpoint.consideredSuspectIds) ? candidate.checkpoint.consideredSuspectIds.filter((id): id is string => typeof id === 'string') : undefined,
   } : undefined;
   const validPoints = Array.isArray(candidate.points) && candidate.points.length > 0 && candidate.points.every((point) => point && typeof point.id === 'string' && typeof point.branchId === 'string' && ['start', 'branch', 'checkpoint', 'confirmed'].includes(point.kind) && validState(point.state));
-  return reconcileBranches(migrateHistory({ ...candidate, points: validPoints ? candidate.points : undefined, activeId: candidate.branches.some((branch) => branch.id === candidate.activeId) ? candidate.activeId : 'main', checkpoint }), puzzle);
+  return reconcileBranches(pruneUnreachablePoints(compactReplayPoints(migrateHistory({ ...candidate, points: validPoints ? candidate.points : undefined, activeId: candidate.branches.some((branch) => branch.id === candidate.activeId) ? candidate.activeId : 'main', checkpoint }))), puzzle);
 }
