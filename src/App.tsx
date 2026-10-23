@@ -115,7 +115,7 @@ export default function App() {
     if (mode !== 'play') return;
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
-      if (event.key === 'Shift' && activeNoteCell === null && !target?.closest('input, textarea, select, [contenteditable="true"]')) setOverlayHeld(true);
+      if (event.key === 'Shift' && !target?.closest('input, textarea, select, [contenteditable="true"]')) setOverlayHeld(true);
     };
     const onKeyUp = (event: globalThis.KeyboardEvent) => { if (event.key === 'Shift') setOverlayHeld(false); };
     const onBlur = () => setOverlayHeld(false);
@@ -123,7 +123,7 @@ export default function App() {
     window.addEventListener('keyup', onKeyUp);
     window.addEventListener('blur', onBlur);
     return () => { window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp); window.removeEventListener('blur', onBlur); };
-  }, [mode, activeNoteCell]);
+  }, [mode]);
 
   const playable = useMemo(() => new Set(puzzle.playable), [puzzle.playable]);
   const roomByCell = useMemo(() => {
@@ -312,12 +312,9 @@ export default function App() {
       event.preventDefault();
       setPersonChoices(null);
       moveNoteFocus(key, event.key);
-    } else if (event.key === 'Escape') {
+    } else if (event.key === 'Escape' && personChoices) {
       event.preventDefault();
       setPersonChoices(null);
-      setActiveNoteCell(null);
-      setOverlayHeld(false);
-      event.currentTarget.blur();
     } else if (personChoices?.cell === key && /^[1-9]$/.test(event.key) && personChoices.ids[Number(event.key) - 1]) {
       event.preventDefault();
       choosePerson(key, personChoices.ids[Number(event.key) - 1], personChoices.confirmed);
@@ -692,7 +689,7 @@ export default function App() {
               <span>{mode === 'edit' ? (tool === 'object' && kindById.get(selectedKind)?.onWall ? 'Click a highlighted wall edge' : tool === 'room' || tool === 'object' ? 'Tap or drag to paint' : 'Tap cells to apply the selected tool') : 'Illustrated reference map'}</span>
             </div>
             {mode === 'play' && <section className="deduction-panel" aria-label="Deduction grid">
-              <div className="deduction-heading"><div><p className="eyebrow">DEDUCTION GRID</p><h2>{showDiagramMap ? 'Map' : 'Your notes'}</h2></div><div className="diagram-heading-actions"><button type="button" className="diagram-map-toggle" aria-pressed={overlayPinned} onClick={() => setOverlayPinned((current) => !current)}>{overlayPinned ? 'Hide map' : 'Show map'}</button><span className="dimension-badge">{placements.length} confirmed</span></div></div>
+              <div className="deduction-heading"><div><p className="eyebrow">DEDUCTION GRID</p><h2>Your notes</h2></div><div className="diagram-heading-actions"><button type="button" className="diagram-map-toggle" aria-pressed={overlayPinned} onClick={() => setOverlayPinned((current) => !current)}>{overlayPinned ? 'Hide map' : 'Show map'}</button><span className="dimension-badge">{placements.length} confirmed</span></div></div>
               <div className="branch-panel" aria-label="Hypotheses">
                 <div className="branch-heading"><strong>Hypotheses</strong><span>{branchWorkspace.checkpoint ? branchWorkspace.checkpoint.name : 'Save a point to try different ideas'}</span></div>
                 {branchWorkspace.checkpoint && <div className="checkpoint-summary">
@@ -712,7 +709,7 @@ export default function App() {
                 {activeBranch.id !== 'main' && <div className="branch-actions branch-outcomes"><button type="button" onClick={() => setBranchWorkspace(applyHypothesisToMain)}>Apply to Main</button><button type="button" onClick={() => setBranchWorkspace(discardHypothesis)}>Discard hypothesis</button></div>}
                 <div className="history-actions"><button type="button" disabled={!activeBranch.undo.length} onClick={() => setBranchWorkspace(undoDeduction)}>↶ Undo</button><button type="button" disabled={!activeBranch.redo.length} onClick={() => setBranchWorkspace(redoDeduction)}>↷ Redo</button><button type="button" onClick={() => setBranchWorkspace((current) => changeDeduction(current, () => ({ placements: [], notes: {} })))}>Reset notes</button></div>
               </div>
-              <p className="hint">Click a cell, then type a lowercase initial to pencil a person or uppercase to confirm them. Press X to mark it empty, Backspace to clear it, or Escape to leave the cell. Hold Shift while no cell is active to see the map. Use arrow keys to move between cells.</p>
+              <p className="hint">Click a cell, then type a lowercase initial to pencil a person or uppercase to confirm them. Press X to mark it empty or Backspace to clear it. Hold Shift to see the map beneath your notes. Use arrow keys to move between cells.</p>
               <div className="note-tools" role="group" aria-label="Deduction mark">
                 <button type="button" className={noteTool === 'erase' ? 'selected' : ''} onClick={() => {
                   setNoteTool((current) => current === 'erase' ? null : 'erase');
@@ -739,6 +736,11 @@ export default function App() {
                 } : null;
                 const floor = floorObjectsByCell.get(key);
                 const floorKind = floor && kindById.get(floor.kindId);
+                const bedCells = floor && floorKind?.art === 'bed' ? objectCells(puzzle, floor) : [];
+                const bedPart = bedCells.length === 2 ? (
+                  bedCells.map(coordinates).sort((a, b) => a[0] - b[0] || a[1] - b[1])[0].join(',') === key ? 'first' : 'second'
+                ) : undefined;
+                const bedAxis = bedCells.length === 2 && coordinates(bedCells[0])[0] !== coordinates(bedCells[1])[0] ? 'vertical' : 'horizontal';
                 const connections = floor && (['N', 'E', 'S', 'W'] as const).filter((side) => {
                   const adjacent = side === 'N' ? cell(row - 1, col) : side === 'S' ? cell(row + 1, col) : side === 'E' ? cell(row, col + 1) : cell(row, col - 1);
                   return floorObjectsByCell.get(adjacent)?.kindId === floor.kindId && roomByCell.get(adjacent) === roomIndex;
@@ -750,9 +752,9 @@ export default function App() {
                 const confirmed = puzzle.suspects.find((suspect) => suspect.id === placement?.suspectId);
                 const candidateIds = note?.type === 'candidates' ? note.suspectIds : [];
                 const mark = fixedBlocked ? '' : note?.type === 'empty' || note?.type === 'blocked' ? 'X' : confirmed ? <span className="confirmed-token">{suspectLetter(confirmed.id)}</span> : candidateIds.length ? <span className="candidate-grid" style={{ gridTemplateColumns: `repeat(${Math.max(3, Math.ceil(Math.sqrt(puzzle.suspects.length)))}, 1fr)` }}>{Array.from({ length: Math.max(9, puzzle.suspects.length) }, (_, slot) => <span className="candidate-slot" key={slot}>{puzzle.suspects[slot] && candidateIds.includes(puzzle.suspects[slot].id) ? suspectLetter(puzzle.suspects[slot].id).toLowerCase() : ''}</span>)}</span> : '';
-                return <button key={key} id={`deduction-${key}`} type="button" className={`deduction-cell ${!isPlayable ? 'outside' : ''} ${fixedBlocked && !showDiagramMap ? 'slash' : ''} ${confirmed && !showDiagramMap ? 'confirmed' : ''} ${candidateIds.length && !showDiagramMap ? 'candidates' : ''} ${activeNoteCell === key && !showDiagramMap ? 'active' : ''}`} style={isPlayable && roomIndex !== undefined ? { backgroundColor: ROOM_COLORS[roomIndex % ROOM_COLORS.length], width: deductionCellSize, height: deductionCellSize } : { width: deductionCellSize, height: deductionCellSize }} disabled={!isPlayable || fixedBlocked || showDiagramMap} aria-pressed={activeNoteCell === key && !showDiagramMap} onFocus={() => { setActiveNoteCell(key); setOverlayHeld(false); if (personChoices?.cell !== key) setPersonChoices(null); }} onClick={() => { setActiveNoteCell(key); if (noteTool) markCell(key); }} onKeyDown={(event) => handleNoteKeyDown(event, key)} aria-label={`Row ${row + 1}, column ${col + 1}: ${!isPlayable ? 'outside map' : fixedBlocked ? 'blocked by furniture' : confirmed ? `confirmed ${confirmed.name}` : note?.type === 'candidates' ? `possible ${note.suspectIds.map((id) => puzzle.suspects.find((suspect) => suspect.id === id)?.name).join(', ')}` : note?.type === 'empty' || note?.type === 'blocked' ? 'empty' : 'unmarked'}`}>
-                  {showDiagramMap && isPlayable && <span className="diagram-map-overlay" aria-hidden="true">{floorKind && <ObjectMark kind={floorKind} connections={connections} />}{wallObjects.map((object) => { const kind = kindById.get(object.kindId); return kind && <ObjectMark key={object.id} kind={kind} className={`wall-object wall-${object.side?.toLowerCase()}`} />; })}</span>}
-                  {!showDiagramMap && <span className="deduction-mark">{mark}</span>}
+                return <button key={key} id={`deduction-${key}`} type="button" className={`deduction-cell ${!isPlayable ? 'outside' : ''} ${fixedBlocked ? 'slash' : ''} ${confirmed ? 'confirmed' : ''} ${candidateIds.length ? 'candidates' : ''} ${activeNoteCell === key ? 'active' : ''} ${showDiagramMap && bedPart === 'first' ? 'map-bed-anchor' : ''}`} style={isPlayable && roomIndex !== undefined ? { backgroundColor: ROOM_COLORS[roomIndex % ROOM_COLORS.length], width: deductionCellSize, height: deductionCellSize } : { width: deductionCellSize, height: deductionCellSize }} disabled={!isPlayable || fixedBlocked} aria-pressed={activeNoteCell === key} onFocus={() => { setActiveNoteCell(key); if (personChoices?.cell !== key) setPersonChoices(null); }} onClick={() => { setActiveNoteCell(key); if (noteTool) markCell(key); }} onKeyDown={(event) => handleNoteKeyDown(event, key)} aria-label={`Row ${row + 1}, column ${col + 1}: ${!isPlayable ? 'outside map' : fixedBlocked ? 'blocked by furniture' : confirmed ? `confirmed ${confirmed.name}` : note?.type === 'candidates' ? `possible ${note.suspectIds.map((id) => puzzle.suspects.find((suspect) => suspect.id === id)?.name).join(', ')}` : note?.type === 'empty' || note?.type === 'blocked' ? 'empty' : 'unmarked'}`}>
+                  {showDiagramMap && isPlayable && <span className="diagram-map-overlay" aria-hidden="true">{floorKind && <ObjectMark kind={floorKind} connections={connections} bedPart={bedPart} bedAxis={bedAxis} bedReverse={floor?.bedDirection === 'W' || floor?.bedDirection === 'N'} />}{wallObjects.map((object) => { const kind = kindById.get(object.kindId); return kind && <ObjectMark key={object.id} kind={kind} className={`wall-object wall-${object.side?.toLowerCase()}`} />; })}</span>}
+                  <span className="deduction-mark">{mark}</span>
                   {diagramWalls?.top && <span className="deduction-wall deduction-wall-top" aria-hidden="true" />}{diagramWalls?.left && <span className="deduction-wall deduction-wall-left" aria-hidden="true" />}{diagramWalls?.bottom && <span className="deduction-wall deduction-wall-bottom" aria-hidden="true" />}{diagramWalls?.right && <span className="deduction-wall deduction-wall-right" aria-hidden="true" />}
                 </button>;
               })}</div></div><label className="scratchpad">Scratch notes<textarea aria-label="Scratch notes" placeholder="Jot down ideas, room possibilities, or anything else…" value={scratchNotes} onChange={(event) => setScratchNotes(event.target.value)} /></label></div>
